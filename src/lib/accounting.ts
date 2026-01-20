@@ -75,7 +75,7 @@ export const AccountingActions = {
     // 5. Production (Insumos -> Producto Transformado)
     // Value moves from Inventory (Ingredients) to Inventory (Finished Product).
     // Total Inventory Value remains constant (Asset Exchange), ignoring labor/overhead for now.
-    production: (prev: Accounts, costOfIngredients: number): Accounts => {
+    production: (prev: Accounts): Accounts => {
         // No change in total Asset value, just reclassification inside Inventory.
         // If we were tracking "Raw Mat" vs "Finished Goods" accounts separately, we would shift here.
         // For this simple schema, balances stay same.

@@ -30,7 +30,8 @@
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "icon": "public/logo3.png"
     }
   },
   "dependencies": {

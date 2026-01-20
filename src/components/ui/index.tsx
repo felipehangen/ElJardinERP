@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Command } from 'cmdk';
+
 import { Search, Plus } from 'lucide-react';
 
 export function cn(...inputs: ClassValue[]) {
@@ -27,11 +27,11 @@ export const Card = ({ children, className }: { children: React.ReactNode, class
     <div className={cn("bg-white p-6 rounded-2xl shadow-sm border border-gray-100", className)}>{children}</div>
 );
 
-export const Modal = ({ isOpen, onClose, title, children }: any) => {
+export const Modal = ({ isOpen, onClose, title, children, className }: any) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className={cn("bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200", className)}>
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                     <h3 className="font-bold text-lg text-gray-800">{title}</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
@@ -51,7 +51,7 @@ interface ComboboxProps {
     value?: string;
 }
 
-export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: ComboboxProps) => {
+export const Combobox = ({ items, placeholder, onSelect, onCreate }: ComboboxProps) => {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const filtered = items.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));

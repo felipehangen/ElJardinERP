@@ -31,6 +31,7 @@ export interface AssetItem {
     id: string;
     name: string; // "Crepera"
     value: number;
+    quantity: number;
 }
 
 export interface Product {
