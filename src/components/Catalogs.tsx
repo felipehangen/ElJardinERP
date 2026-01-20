@@ -12,7 +12,7 @@ export const Catalogs = () => {
         addExpenseType, deleteExpenseType
     } = useStore();
 
-    const [activeTab, setActiveTab] = useState<'inv' | 'prod' | 'prov' | 'exp'>('inv');
+    const [activeTab, setActiveTab] = useState<'inv' | 'prod' | 'prov' | 'exp' | 'asset'>('inv');
 
     // Forms
     const [invForm, setInvForm] = useState({ name: '', cost: '' });
@@ -26,7 +26,7 @@ export const Catalogs = () => {
                 { id: 'inv', label: 'Insumos', icon: Box },
                 { id: 'prod', label: 'Productos Venta', icon: Tag },
                 { id: 'prov', label: 'Proveedores', icon: Users },
-                { id: 'exp', label: 'Tipos Gasto', icon: FileText },
+                { id: 'exp', label: 'Tipos de Gasto', icon: FileText },
             ].map(t => (
                 <button
                     key={t.id}
@@ -143,9 +143,9 @@ export const Catalogs = () => {
             {activeTab === 'exp' && (
                 <div className="space-y-4">
                     <Card>
-                        <h3 className="font-bold mb-4">Tipo de Gasto</h3>
+                        <h3 className="font-bold mb-4">Tipos de Gasto</h3>
                         <div className="flex gap-4">
-                            <Input placeholder="Nombre (ej: Electricidad, Internet)" value={expForm} onChange={e => setExpForm(e.target.value)} />
+                            <Input placeholder="Nombre (ej: Servicios públicos, Publicidad)" value={expForm} onChange={e => setExpForm(e.target.value)} />
                             <Button onClick={() => {
                                 if (!expForm) return;
                                 addExpenseType({ id: crypto.randomUUID(), name: expForm });

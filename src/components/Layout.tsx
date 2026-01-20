@@ -28,9 +28,9 @@ export const Layout = ({ children, currentTab, onTabChange }: LayoutProps) => {
         <div className="min-h-screen bg-jardin-bg flex">
             {/* Sidebar Desktop */}
             <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 p-4 fixed h-full z-10">
-                <div className="mb-10 px-4 pt-4">
-                    <h1 className="text-2xl font-bold text-gray-800 tracking-tight">El Jardín</h1>
-                    <div className="text-xs text-gray-400 font-medium">ERP Contable</div>
+                <div className="mb-10 px-4 pt-4 flex flex-col items-center text-center">
+                    <img src="logo3.png" alt="El Jardín Logo" className="w-40 h-40 object-contain mb-2 hover:scale-105 transition-transform" />
+                    <div className="text-xs text-gray-400 font-medium tracking-widest uppercase">ERP Contable</div>
                 </div>
                 <nav className="space-y-2 flex-1">
                     <NavItem id="ops" icon={<LayoutDashboard size={20} />} label="Operaciones" />

@@ -53,7 +53,32 @@ export const Settings = () => {
 
             <div className="pt-8 border-t">
                 <h3 className="font-bold text-red-600 mb-2">Zona de Peligro</h3>
-                <Button variant="danger" className="w-full" onClick={() => { if (window.confirm("¿SEGURO? Se perderá todo.")) { reset(); window.location.reload(); } }}>
+                <Button variant="danger" className="w-full" onClick={() => {
+                    const str = window.prompt('Escribe "BORRAR" para confirmar la eliminación total de datos:');
+                    if (str && str.trim().toUpperCase() === 'BORRAR') {
+                        try {
+                            // 1. Reset Zustand State (In Memory)
+                            reset();
+
+                            // 2. Nuke LocalStorage (Aggressive)
+                            window.localStorage.clear();
+
+                            // 3. Specific Key Removal (Just in case)
+                            window.localStorage.removeItem('jardin-erp-storage-v4');
+
+                            // 4. Feedback & Reload
+                            alert('¡Datos eliminados correctamente! El sistema se reiniciará.');
+                            setTimeout(() => {
+                                window.location.href = '/'; // Force navigation to root
+                                window.location.reload();
+                            }, 500);
+                        } catch (e) {
+                            alert('Error eliminando datos: ' + e);
+                        }
+                    } else if (str !== null) {
+                        alert('Palabra incorrecta. No se realizó ninguna acción.');
+                    }
+                }}>
                     <Trash2 className="mr-2" size={18} /> Reiniciar de Fábrica
                 </Button>
             </div>

@@ -84,6 +84,13 @@ export const Dashboard = ({ onOpenModal }: DashboardProps) => {
                     color="bg-indigo-500"
                     onClick={() => onOpenModal('inventory_count')}
                 />
+                <ActionBtn
+                    label="Activos (Conteo)"
+                    sub="Revisión Física"
+                    icon={<ClipboardList size={32} />}
+                    color="bg-blue-500"
+                    onClick={() => onOpenModal('asset_count')}
+                />
             </div>
         </div>
     );

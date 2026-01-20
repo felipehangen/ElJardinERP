@@ -14,6 +14,7 @@ interface StoreActions {
 
     // Assets
     addAssetItem: (item: AssetItem) => void;
+    updateAssetItem: (id: string, updates: Partial<AssetItem>) => void;
     deleteAssetItem: (id: string) => void;
 
     // Products
@@ -34,6 +35,7 @@ interface StoreActions {
 
     // Complex Actions
     batchUpdateInventory: (updates: InventoryItem[]) => void;
+    batchUpdateAssets: (updates: AssetItem[]) => void;
 
     // System
     importState: (state: AppState) => void;
@@ -54,6 +56,9 @@ export const useStore = create<AppState & StoreActions>()(
             deleteInventoryItem: (id) => set((state) => ({ inventory: state.inventory.filter((i) => i.id !== id) })),
 
             addAssetItem: (item) => set((state) => ({ assets: [...state.assets, item] })),
+            updateAssetItem: (id, updates) => set((state) => ({
+                assets: state.assets.map((i) => (i.id === id ? { ...i, ...updates } : i)),
+            })),
             deleteAssetItem: (id) => set((state) => ({ assets: state.assets.filter((i) => i.id !== id) })),
 
             addProduct: (item) => set((state) => ({ products: [...state.products, item] })),
@@ -75,6 +80,13 @@ export const useStore = create<AppState & StoreActions>()(
                 const updateMap = new Map(updates.map(u => [u.id, u]));
                 return {
                     inventory: state.inventory.map(item => updateMap.get(item.id) || item)
+                };
+            }),
+
+            batchUpdateAssets: (updates) => set((state) => {
+                const updateMap = new Map(updates.map(u => [u.id, u]));
+                return {
+                    assets: state.assets.map(item => updateMap.get(item.id) || item)
                 };
             }),
 

@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Button, Input, Card } from './ui';
 import { AccountingActions } from '../lib/accounting';
-import { Leaf, Plus, Trash2, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, ArrowRight } from 'lucide-react';
 import type { InventoryItem, AssetItem } from '../types';
 
 export const Onboarding = () => {
     const {
         updateAccounts, setInitialized,
-        addInventoryItem, addAssetItem,
-        reset
+        addInventoryItem, addAssetItem
     } = useStore();
 
     const [step, setStep] = useState(1);
@@ -38,7 +37,7 @@ export const Onboarding = () => {
     const [assetForm, setAssetForm] = useState({ name: '', value: '' });
     const addAsset = () => {
         if (!assetForm.name || !assetForm.value) return;
-        const newItem: AssetItem = { id: crypto.randomUUID(), name: assetForm.name, value: parseFloat(assetForm.value || '0') };
+        const newItem: AssetItem = { id: crypto.randomUUID(), name: assetForm.name, value: parseFloat(assetForm.value || '0'), quantity: 1 };
         setTempAssets([...tempAssets, newItem]);
         setAssetForm({ name: '', value: '' });
     };
@@ -64,7 +63,10 @@ export const Onboarding = () => {
     return (
         <div className="min-h-screen flex items-center justify-center p-4 bg-jardin-bg">
             <div className="w-full max-w-2xl">
-                <div className="flex justify-center mb-8 text-jardin-primary"><Leaf size={64} /></div>
+                <div className="flex flex-col items-center justify-center mb-8 text-jardin-primary gap-4">
+                    <img src="/logo3.png" alt="El Jardín Logo" className="w-40 h-40 object-contain" />
+                    <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Bienvenido</h1>
+                </div>
 
                 {step === 1 && (
                     <Card>

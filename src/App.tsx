@@ -6,7 +6,7 @@ import { Dashboard } from './components/Dashboard';
 import { Catalogs } from './components/Catalogs';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
-import { PurchaseModal, SaleModal, ExpenseModal, ProductionModal, InventoryCountModal } from './components/Operations';
+import { PurchaseModal, SaleModal, ExpenseModal, ProductionModal, InventoryCountModal, AssetCountModal } from './components/Operations';
 
 export default function App() {
   const initialized = useStore((state) => state.initialized);
@@ -30,6 +30,7 @@ export default function App() {
       {modal === 'expense' && <ExpenseModal isOpen={true} onClose={() => setModal(null)} />}
       {modal === 'production' && <ProductionModal isOpen={true} onClose={() => setModal(null)} />}
       {modal === 'inventory_count' && <InventoryCountModal isOpen={true} onClose={() => setModal(null)} />}
+      {modal === 'asset_count' && <AssetCountModal isOpen={true} onClose={() => setModal(null)} />}
     </Layout>
   );
 }

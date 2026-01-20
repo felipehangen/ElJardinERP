@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Command } from 'cmdk';
+
 import { Search, Plus } from 'lucide-react';
 
 export function cn(...inputs: ClassValue[]) {
@@ -27,11 +27,11 @@ export const Card = ({ children, className }: { children: React.ReactNode, class
     <div className={cn("bg-white p-6 rounded-2xl shadow-sm border border-gray-100", className)}>{children}</div>
 );
 
-export const Modal = ({ isOpen, onClose, title, children }: any) => {
+export const Modal = ({ isOpen, onClose, title, children, className }: any) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className={cn("bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200", className)}>
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                     <h3 className="font-bold text-lg text-gray-800">{title}</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
@@ -53,14 +53,26 @@ interface ComboboxProps {
 
 export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: ComboboxProps) => {
     const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState('');
+    const [query, setQuery] = useState(value || ''); // Initialize with value
     const filtered = items.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+
+    // Sync with external value changes
+    useEffect(() => {
+        if (value !== undefined) {
+            setQuery(value);
+        }
+    }, [value]);
 
     // Safe handle creation
     const handleCreate = () => {
         if (onCreate && query.trim()) {
             onCreate(query);
-            setQuery('');
+            // Do NOT clear query here if controlled, let parent decide via value prop.
+            // But if uncontrolled, we might want to clear?
+            // "No se queda seleccionado" -> implies User WANTS it to stay.
+            // If parent updates 'value' to the new name, useEffect sets query -> It stays.
+            // If parent passes value="", useEffect sets query -> It clears.
+            // So we rely on parent.
             setOpen(false);
         }
     };
@@ -75,8 +87,6 @@ export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: Comb
                     value={query}
                     onChange={e => { setQuery(e.target.value); setOpen(true); }}
                     onFocus={() => setOpen(true)}
-                // OnBlur logic needs to be careful not to close before click. 
-                // Simplified for this demo: click overlay to close (controlled by parent usually, or use a proper popover lib like radix in future)
                 />
             </div>
             {open && query && (
@@ -103,7 +113,7 @@ export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: Comb
                     )}
                 </div>
             )}
-            {/* Click outside closer helper (very basic) */}
+            {/* Click outside closer helper */}
             {open && <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />}
         </div>
     );
