@@ -31,7 +31,7 @@
         "dmg",
         "zip"
       ],
-      "icon": "public/logo3.png"
+      "icon": "public/icon.png"
     }
   },
   "dependencies": {

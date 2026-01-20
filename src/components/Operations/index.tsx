@@ -238,42 +238,72 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 };
 
 // 2. Sale
+// 2. Sale (Venta con Carrito)
 export const SaleModal = ({ isOpen, onClose }: any) => {
     const {
         accounts, updateAccounts, addTransaction,
         products, addProduct
     } = useStore();
-    const [form, setForm] = useState({ prodId: '', prodName: '', price: '', method: 'caja_chica' });
+
+    // Cart State: price is string to allow editing "500" -> "" -> "450"
+    const [cart, setCart] = useState<{ id: string; name: string; price: string; qty: number }[]>([]);
+    const [method, setMethod] = useState('caja_chica');
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null });
 
     const handleCreateProd = (name: string) => {
-        // Quick create product for sale
         const id = crypto.randomUUID();
-        // We don't have price yet, so we'll update it when they fill the price input
-        addProduct({ id, name, price: 0 });
-        setForm(prev => ({ ...prev, prodId: id, prodName: name }));
+        const newProd = { id, name, price: 0 };
+        addProduct(newProd);
+        addToCart(newProd); // Add immediately
     };
 
-    const handleSubmit = () => {
-        const salePrice = parseFloat(form.price || '0');
-        if (salePrice <= 0) return;
+    const addToCart = (product: any) => {
+        setCart([...cart, { id: product.id, name: product.name, price: product.price.toString(), qty: 1 }]);
+    };
 
-        // V4 Logic: "Inventariado" vs "No Inventariado".
-        // Simplified: We check if product has Inventory Link. If not -> Service/Crepa logic (No Cost Entry inferred automatically here unless linked).
-        // For this demo, let's assume 0 cost unless linked (Store logic needs refinement for linking, but out of scope for "Quick Create").
-        // We will pass 0 cost for quick created items.
+    const removeFromCart = (index: number) => {
+        setCart(cart.filter((_, i) => i !== index));
+    };
+
+    const updateItem = (index: number, field: 'price' | 'qty', value: string) => {
+        const newCart = [...cart];
+        if (field === 'price') {
+            newCart[index].price = value;
+        } else {
+            // Qty must be number
+            const qty = parseInt(value) || 0;
+            newCart[index].qty = qty;
+        }
+        setCart(newCart);
+    };
+
+    const totalAmount = cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * item.qty), 0);
+
+    const handleSubmit = () => {
+        if (cart.length === 0 || totalAmount <= 0) return;
 
         const prevAccounts = { ...accounts };
-        const newAccounts = AccountingActions.registerSale(accounts, salePrice, 0, false, form.method as any);
+        // Register Sale Logic
+        // For simplicity: We aggregate all items into one "Sale" transaction or one per item?
+        // Better: One transaction for the total amount.
+        // And we assume no inventory cost adjustment for now (Service based) as per V3 logic.
+
+        const newAccounts = AccountingActions.registerSale(accounts, totalAmount, 0, false, method as any);
         updateAccounts(() => newAccounts);
 
-        // Update product price in catalog if it was 0 (Quick create side effect, helpful feature)
-        // logic omitted for simplicity to keep functions pure-ish.
+        const desc = cart.map(i => `${i.name} (x${i.qty})`).join(', ');
 
-        addTransaction({ id: crypto.randomUUID(), type: 'SALE', date: new Date().toISOString(), amount: salePrice, description: `Venta: ${form.prodName}` });
+        addTransaction({
+            id: crypto.randomUUID(),
+            type: 'SALE',
+            date: new Date().toISOString(),
+            amount: totalAmount,
+            description: `Venta: ${desc}`
+        });
 
-        setFeedback({ isOpen: true, prev: prevAccounts, curr: newAccounts, description: `Vendiste: ${form.prodName}` });
-        setForm({ prodId: '', prodName: '', price: '', method: 'caja_chica' });
+        setFeedback({ isOpen: true, prev: prevAccounts, curr: newAccounts, description: `Venta Total: ₡${totalAmount.toLocaleString()} (${cart.length} items)` });
+        setCart([]);
+        setMethod('caja_chica');
     };
 
     const closeAll = () => {
@@ -285,23 +315,72 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
         <>
             <Modal isOpen={isOpen && !feedback.isOpen} onClose={onClose} title="Registrar Venta">
                 <div className="space-y-4">
+                    {/* Product Search / Add */}
                     <div className="space-y-1">
-                        <label className="text-xs font-medium ml-1">Producto</label>
+                        <label className="text-xs font-medium ml-1">Agregar Producto</label>
                         <Combobox
                             items={products}
                             placeholder="Buscar o crear producto..."
-                            onSelect={(i: any) => setForm({ ...form, prodId: i.id, prodName: i.name, price: i.price.toString() })}
+                            onSelect={addToCart}
                             onCreate={handleCreateProd}
+                            value="" // Always clear after selection
                         />
                     </div>
 
-                    <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl">
-                        <span className="font-bold text-gray-600">Total a Cobrar</span>
-                        <Input type="number" className="w-32 text-right font-bold text-xl bg-white" placeholder="0" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
+                    {/* Cart List */}
+                    <div className="min-h-[150px] max-h-[40vh] overflow-y-auto border rounded-xl bg-gray-50 p-2 space-y-2">
+                        {cart.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-gray-400 text-sm italic py-8">
+                                Carrito vacío. Agrega productos arriba.
+                            </div>
+                        ) : (
+                            cart.map((item, idx) => (
+                                <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded shadow-sm">
+                                    <div className="flex-1">
+                                        <div className="font-medium text-sm text-gray-800">{item.name}</div>
+                                        <div className="text-[10px] text-gray-400">Precio Sugerido</div>
+                                    </div>
+
+                                    {/* Qty Input */}
+                                    <Input
+                                        type="number"
+                                        className="w-14 h-8 text-center text-sm p-1"
+                                        value={item.qty}
+                                        onChange={e => updateItem(idx, 'qty', e.target.value)}
+                                        placeholder="Can"
+                                    />
+
+                                    {/* Price Input */}
+                                    <Input
+                                        type="number"
+                                        className="w-20 h-8 text-right text-sm font-bold p-1"
+                                        value={item.price}
+                                        onChange={e => updateItem(idx, 'price', e.target.value)}
+                                        placeholder="0"
+                                    />
+
+                                    <button onClick={() => removeFromCart(idx)} className="text-gray-400 hover:text-red-500 p-1">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))
+                        )}
                     </div>
 
-                    <PaymentMethod value={form.method} onChange={(m: any) => setForm({ ...form, method: m })} />
-                    <Button className="w-full" onClick={handleSubmit}>Cobrar</Button>
+                    <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <span className="font-bold text-blue-900">Total a Cobrar</span>
+                        <span className="font-black text-2xl text-blue-700">₡{totalAmount.toLocaleString()}</span>
+                    </div>
+
+                    <PaymentMethod value={method} onChange={setMethod} />
+
+                    <Button
+                        className="w-full"
+                        onClick={handleSubmit}
+                        disabled={cart.length === 0 || totalAmount <= 0}
+                    >
+                        Cobrar ₡{totalAmount.toLocaleString()}
+                    </Button>
                 </div>
             </Modal>
 
@@ -437,6 +516,15 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
         handleAddIngredient(newItem);
     };
 
+    // Create Output Product Immediately
+    const handleCreateOutput = (name: string) => {
+        const newId = crypto.randomUUID();
+        // Create in inventory with 0 stock/cost to establish existence
+        // The production submission will handle updating its average cost later.
+        addInventoryItem({ id: newId, name, stock: 0, cost: 0 });
+        setOutput({ ...output, name, id: newId });
+    };
+
     // Calculate Total Cost
     const totalCost = ingredients.reduce((acc, curr) => {
         const qty = parseFloat(curr.qty || '0');
@@ -457,21 +545,18 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
 
         const prevAccounts = { ...accounts };
 
-        // 2. Create/Update Output Product in Inventory
+        // 2. Update Output Product
         const existing = inventory.find(i => i.name.toLowerCase() === output.name.toLowerCase());
 
         if (existing) {
-            // Weighted Average Cost: (OldVal + NewVal) / TotalQty
             const oldVal = existing.cost * existing.stock;
-            const newVal = totalCost; // Total value of ingredients
+            const newVal = totalCost;
             const newStock = existing.stock + outputQty;
             const newAvgCost = (oldVal + newVal) / newStock;
 
-            updateInventoryItem(existing.id, {
-                stock: newStock,
-                cost: newAvgCost
-            });
+            updateInventoryItem(existing.id, { stock: newStock, cost: newAvgCost });
         } else {
+            // Fallback for race condition, though handleCreateOutput handles it
             addInventoryItem({
                 id: crypto.randomUUID(),
                 name: output.name,
@@ -480,8 +565,7 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
             });
         }
 
-        // 3. Accounting (Value Transfer)
-        // No Net Asset change, but we log it.
+        // 3. Accounting
         addTransaction({
             id: crypto.randomUUID(),
             type: 'PRODUCTION',
@@ -490,7 +574,6 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
             description: `Producción: ${outputQty} x ${output.name}`
         });
 
-        // Feedback
         setFeedback({
             isOpen: true,
             prev: prevAccounts,
@@ -520,6 +603,7 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                             placeholder="Agregar insumo..."
                             onSelect={handleAddIngredient}
                             onCreate={handleCreateIngredient}
+                            value=""
                         />
                         <div className="space-y-2 max-h-60 overflow-y-auto">
                             {ingredients.length === 0 && (
@@ -564,7 +648,8 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                                 items={inventory} // Can select existing to replenish stock
                                 placeholder="Ej: Picadillo por kg"
                                 onSelect={(i: any) => setOutput({ ...output, name: i.name })}
-                                onCreate={(name: string) => setOutput({ ...output, name })}
+                                onCreate={handleCreateOutput}
+                                value={output.name}
                             />
                         </div>
 

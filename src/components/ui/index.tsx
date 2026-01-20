@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -51,16 +51,28 @@ interface ComboboxProps {
     value?: string;
 }
 
-export const Combobox = ({ items, placeholder, onSelect, onCreate }: ComboboxProps) => {
+export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: ComboboxProps) => {
     const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState('');
+    const [query, setQuery] = useState(value || ''); // Initialize with value
     const filtered = items.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+
+    // Sync with external value changes
+    useEffect(() => {
+        if (value !== undefined) {
+            setQuery(value);
+        }
+    }, [value]);
 
     // Safe handle creation
     const handleCreate = () => {
         if (onCreate && query.trim()) {
             onCreate(query);
-            setQuery('');
+            // Do NOT clear query here if controlled, let parent decide via value prop.
+            // But if uncontrolled, we might want to clear?
+            // "No se queda seleccionado" -> implies User WANTS it to stay.
+            // If parent updates 'value' to the new name, useEffect sets query -> It stays.
+            // If parent passes value="", useEffect sets query -> It clears.
+            // So we rely on parent.
             setOpen(false);
         }
     };
@@ -75,8 +87,6 @@ export const Combobox = ({ items, placeholder, onSelect, onCreate }: ComboboxPro
                     value={query}
                     onChange={e => { setQuery(e.target.value); setOpen(true); }}
                     onFocus={() => setOpen(true)}
-                // OnBlur logic needs to be careful not to close before click. 
-                // Simplified for this demo: click overlay to close (controlled by parent usually, or use a proper popover lib like radix in future)
                 />
             </div>
             {open && query && (
@@ -103,7 +113,7 @@ export const Combobox = ({ items, placeholder, onSelect, onCreate }: ComboboxPro
                     )}
                 </div>
             )}
-            {/* Click outside closer helper (very basic) */}
+            {/* Click outside closer helper */}
             {open && <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />}
         </div>
     );
