@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
-export const Button = ({ className, variant = "primary", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "outline" | "ghost" }) => {
+export const Button = ({ className, variant = "primary", size = "default", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "outline" | "ghost", size?: "default" | "sm" | "lg" | "icon" }) => {
     const variants = {
         primary: "bg-jardin-primary text-white hover:bg-jardin-secondary",
         secondary: "bg-jardin-accent text-gray-900 hover:bg-yellow-400",
@@ -16,7 +16,13 @@ export const Button = ({ className, variant = "primary", ...props }: React.Butto
         outline: "border-2 border-gray-200 text-gray-700 hover:bg-gray-50",
         ghost: "bg-transparent text-gray-600 hover:bg-gray-100"
     };
-    return <button className={cn("px-4 py-2 rounded-xl font-medium transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none", variants[variant], className)} {...props} />;
+    const sizes = {
+        default: "px-4 py-2",
+        sm: "px-3 py-1.5 text-sm",
+        lg: "px-6 py-3 text-lg",
+        icon: "p-2"
+    };
+    return <button className={cn("rounded-xl font-medium transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none", variants[variant], sizes[size], className)} {...props} />;
 };
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (

@@ -1,23 +1,40 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { Card, cn, Input } from './ui';
+import { Card, cn, Input, Modal } from './ui';
 import { FileText, List, Box, Monitor, Wallet, X } from 'lucide-react';
 import type { Transaction } from '../types';
 
-const MONTHS = [
-    { value: '01', label: 'Enero' }, { value: '02', label: 'Febrero' },
-    { value: '03', label: 'Marzo' }, { value: '04', label: 'Abril' },
-    { value: '05', label: 'Mayo' }, { value: '06', label: 'Junio' },
-    { value: '07', label: 'Julio' }, { value: '08', label: 'Agosto' },
-    { value: '09', label: 'Septiembre' }, { value: '10', label: 'Octubre' },
-    { value: '11', label: 'Noviembre' }, { value: '12', label: 'Diciembre' }
-];
+// Define helper to get YTD start date
+const getYTDStartDate = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-01-01`;
+};
 
-const YEARS = [2024, 2025, 2026, 2027, 2028];
+const translateTxType = (type: string) => {
+    const map: Record<string, string> = {
+        SALE: 'VENTA',
+        PURCHASE: 'COMPRA',
+        EXPENSE: 'GASTO',
+        PRODUCTION: 'PRODUCCIÓN',
+        ADJUSTMENT: 'AJUSTE',
+        INITIALIZATION: 'INICIALIZACIÓN'
+    };
+    return map[type] || type;
+};
+
+const translateMethod = (method: string) => {
+    if (method === 'caja_chica') return 'Efectivo';
+    if (method === 'banco') return 'Transferencia';
+    return method;
+};
+
+
 
 export const Reports = () => {
-    const { accounts, transactions, inventory, assets } = useStore();
+    const { accounts, transactions, inventory, assets, getLedgerAccounts, revertTransaction } = useStore();
+    const ledger = getLedgerAccounts();
     const [tab, setTab] = useState<'financial' | 'transactions' | 'inventory' | 'assets' | 'cash'>('financial');
+    const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
 
     // Filter State
     const [filterType, setFilterType] = useState<string>('ALL');
@@ -25,79 +42,37 @@ export const Reports = () => {
     const [endDate, setEndDate] = useState('');
     const [searchInv, setSearchInv] = useState('');
     const [searchAsset, setSearchAsset] = useState('');
-    const [financialMonth, setFinancialMonth] = useState('');
+    const [finStartDate, setFinStartDate] = useState(getYTDStartDate());
+    const [finEndDate, setFinEndDate] = useState(''); // Empty means up to today
 
     if (!accounts) return <div>Cargando cuentas...</div>;
 
-    // Derived Financial Data (Global)
-    const totalActivos = accounts.caja_chica + accounts.banco + accounts.inventario + accounts.activo_fijo;
-    const utilidadBrutaGlobal = accounts.ventas - accounts.costos;
-    const utilidadNetaGlobal = utilidadBrutaGlobal - accounts.gastos;
-    const totalPatrimonio = accounts.patrimonio + utilidadNetaGlobal;
+    // Derived Financial Data (Global using Ledger)
+    const totalActivos = ledger.caja_chica + ledger.banco + ledger.inventario + ledger.activo_fijo;
+    const utilidadBrutaGlobal = (ledger.ventas || 0) - (ledger.costos || 0);
+    const utilidadNetaGlobal = utilidadBrutaGlobal - (ledger.gastos || 0);
+    const totalPatrimonio = ledger.patrimonio + utilidadNetaGlobal;
 
-    // Derived Financial Data (Monthly or Global)
     const financialData = useMemo(() => {
-        if (!financialMonth) {
-            const ub = accounts.ventas - accounts.costos;
-            return {
-                ventas: accounts.ventas,
-                costos: accounts.costos,
-                gastos: accounts.gastos,
-                utilidadBruta: ub,
-                utilidadNeta: ub - accounts.gastos
-            };
-        }
+        const start = finStartDate ? new Date(finStartDate + 'T00:00:00') : null;
+        const end = finEndDate ? new Date(finEndDate + 'T23:59:59') : null;
 
-        // Fix: Parse YYYY-MM explicitly to avoid timezone shifts
-        const [yearStr, monthStr] = financialMonth.split('-');
-        const selectedYear = parseInt(yearStr);
-        const selectedMonth = parseInt(monthStr); // 1-12
-
-        const relevant = transactions.filter(t => {
-            // Fix: Use local date to match user expectation
-            const d = new Date(t.date);
-            return d.getFullYear() === selectedYear && (d.getMonth() + 1) === selectedMonth;
-        });
-
-        const ventas = relevant.filter(t => t.type === 'SALE').reduce((acc, t) => acc + t.amount, 0);
-
-        const gastos = relevant.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
-
-        // Adjustments logic
-        const costsFromAdj = relevant
-            .filter(t => t.type === 'ADJUSTMENT' && t.description.toLowerCase().includes('inventario'))
-            .reduce((acc, t) => acc + t.amount, 0);
-
-        const expFromAdj = relevant
-            .filter(t => t.type === 'ADJUSTMENT' && !t.description.toLowerCase().includes('inventario'))
-            .reduce((acc, t) => acc + t.amount, 0);
-
-        const totalGastos = gastos + expFromAdj;
-        const totalCostos = costsFromAdj;
-
-        const ub = ventas - totalCostos;
+        // Get ledger accounts for the specified period
+        const periodLedger = getLedgerAccounts(start, end);
 
         return {
-            ventas,
-            costos: totalCostos,
-            gastos: totalGastos,
-            utilidadBruta: ub,
-            utilidadNeta: ub - totalGastos
+            ventas: periodLedger.ventas || 0,
+            costos: periodLedger.costos || 0,
+            gastos: periodLedger.gastos || 0,
+            utilidadBruta: (periodLedger.ventas || 0) - (periodLedger.costos || 0),
+            utilidadNeta: (periodLedger.ventas || 0) - (periodLedger.costos || 0) - (periodLedger.gastos || 0)
         };
-    }, [accounts, transactions, financialMonth]);
+    }, [getLedgerAccounts, finStartDate, finEndDate]);
 
     // Use global utility for Balance Sheet equity calc (retained earnings are cumulative)
     const utilidadNeta = utilidadNetaGlobal;
 
-    // Helper to format month name in Spanish safely
-    const getMonthLabel = (ym: string) => {
-        if (!ym) return '';
-        const [y, m] = ym.split('-');
-        // Create date at noon to avoid timezone rolling
-        const date = new Date(parseInt(y), parseInt(m) - 1, 15);
-        const monthName = date.toLocaleDateString('es-ES', { month: 'long' });
-        return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${y}`;
-    };
+
 
     // Filter Transactions
     const filteredTransactions = useMemo(() => {
@@ -164,50 +139,29 @@ export const Reports = () => {
                                 <h3 className="font-bold text-lg text-gray-800">Estado de Resultados</h3>
                                 <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded">Rendimiento</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <select
-                                    className="p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-jardin-primary outline-none"
-                                    value={financialMonth ? financialMonth.split('-')[1] : ''}
-                                    onChange={(e) => {
-                                        const m = e.target.value;
-                                        if (!m) {
-                                            // Handle clearing month but keeping year? Or enforce pairs. 
-                                            // If clearing month, clear whole filter
-                                            setFinancialMonth('');
-                                            return;
-                                        }
-                                        const currentY = financialMonth ? financialMonth.split('-')[0] : new Date().getFullYear().toString();
-                                        setFinancialMonth(`${currentY}-${m}`);
-                                    }}
-                                >
-                                    <option value="">Mes</option>
-                                    {MONTHS.map(m => (
-                                        <option key={m.value} value={m.value}>{m.label}</option>
-                                    ))}
-                                </select>
-                                <select
-                                    className="p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-jardin-primary outline-none"
-                                    value={financialMonth ? financialMonth.split('-')[0] : new Date().getFullYear().toString()}
-                                    onChange={(e) => {
-                                        const y = e.target.value;
-                                        // If no month selected yet, default to January when year is picked? Or wait for month.
-                                        // Let's assume we maintain current month or default to 01 if not set but user is interacting with year?
-                                        // Better: If no filter, setting year doesn't enable filter until month is picked.
-                                        // BUT logic uses financialMonth string.
-                                        // If I change year, I update string. If string was empty?
-                                        const currentM = financialMonth ? financialMonth.split('-')[1] : '01';
-                                        setFinancialMonth(`${y}-${currentM}`);
-                                    }}
-                                >
-                                    {YEARS.map(y => (
-                                        <option key={y} value={y}>{y}</option>
-                                    ))}
-                                </select>
-                                {financialMonth && (
+                            <div className="flex gap-2 items-center flex-wrap justify-end">
+                                <div className="flex items-center gap-1">
+                                    <Input
+                                        type="date"
+                                        value={finStartDate}
+                                        onChange={e => setFinStartDate(e.target.value)}
+                                        className="w-auto h-9 text-xs"
+                                        title="Fecha Inicio"
+                                    />
+                                    <span className="text-gray-400 text-xs">-</span>
+                                    <Input
+                                        type="date"
+                                        value={finEndDate}
+                                        onChange={e => setFinEndDate(e.target.value)}
+                                        className="w-auto h-9 text-xs"
+                                        title="Fecha Fin"
+                                    />
+                                </div>
+                                {(finStartDate || finEndDate) && (
                                     <button
-                                        onClick={() => setFinancialMonth('')}
-                                        className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-500 transition-colors"
-                                        title="Limpiar filtro"
+                                        onClick={() => { setFinStartDate(''); setFinEndDate(''); }}
+                                        className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                                        title="Limpiar (Ver Histórico Completo)"
                                     >
                                         <X size={16} />
                                     </button>
@@ -226,9 +180,9 @@ export const Reports = () => {
                                 <span>₡{financialData.utilidadNeta.toLocaleString()}</span>
                             </div>
                         </div>
-                        {financialMonth && (
+                        {(finStartDate || finEndDate) && (
                             <div className="text-xs text-center text-gray-400 mt-2">
-                                Mostrando datos de {getMonthLabel(financialMonth)}
+                                Periodo: {finStartDate ? new Date(finStartDate + 'T00:00:00').toLocaleDateString() : 'Inicio'} - {finEndDate ? new Date(finEndDate + 'T23:59:59').toLocaleDateString() : 'Hoy'}
                             </div>
                         )}
                     </Card>
@@ -239,25 +193,42 @@ export const Reports = () => {
                             <h3 className="font-bold text-lg text-gray-800">Balance de Situación</h3>
                             <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">Posición Actual</span>
                         </div>
-                        <div className="space-y-2 text-sm">
-                            <div className="bg-gray-50 p-2 rounded-lg space-y-2">
-                                <div className="font-bold text-gray-500 uppercase text-xs mb-1">Activos (Lo que tengo)</div>
+                        <div className="space-y-4 text-sm">
+                            <div className="bg-gray-50 p-3 rounded-xl space-y-2 shadow-sm border border-gray-100">
+                                <div className="font-bold text-blue-900 uppercase text-xs mb-1">Activos (Lo que tengo)</div>
                                 <Row label="Caja Chica" value={accounts.caja_chica} />
                                 <Row label="Bancos" value={accounts.banco} />
                                 <Row label="Inventario" value={accounts.inventario} />
                                 <Row label="Activo Fijo" value={accounts.activo_fijo} />
-                                <div className="border-t border-gray-200 mt-2 pt-1 flex justify-between font-bold">
+                                <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-black text-gray-800">
                                     <span>Total Activos</span>
                                     <span>₡{totalActivos.toLocaleString()}</span>
                                 </div>
                             </div>
-                            <div className="bg-gray-50 p-2 rounded-lg space-y-2 mt-4">
-                                <div className="font-bold text-gray-500 uppercase text-xs mb-1">Patrimonio (Lo que vale)</div>
+
+                            <div className="bg-gray-50 p-3 rounded-xl space-y-2 shadow-sm border border-gray-100">
+                                <div className="font-bold text-red-900 uppercase text-xs mb-1">Pasivos (Lo que debo)</div>
+                                <Row label="Cuentas por Pagar" value={0} color="text-gray-400" />
+                                <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-black text-gray-800">
+                                    <span>Total Pasivos</span>
+                                    <span>₡0</span>
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-50 p-3 rounded-xl space-y-2 shadow-sm border border-gray-100">
+                                <div className="font-bold text-emerald-900 uppercase text-xs mb-1">Patrimonio (Lo que vale)</div>
                                 <Row label="Capital Inicial" value={accounts.patrimonio} />
                                 <Row label="Utilidad Acumulada" value={utilidadNeta} color={utilidadNeta >= 0 ? 'text-green-600' : 'text-red-500'} />
-                                <div className="border-t border-gray-200 mt-2 pt-1 flex justify-between font-bold">
+                                <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-black text-gray-800">
                                     <span>Total Patrimonio</span>
                                     <span>₡{totalPatrimonio.toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            <div className="bg-emerald-100 p-3 rounded-xl shadow-sm border border-emerald-200">
+                                <div className="flex justify-between font-black text-emerald-900 text-base">
+                                    <span>Pasivo + Patrimonio</span>
+                                    <span>₡{(0 + totalPatrimonio).toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>
@@ -442,16 +413,29 @@ export const Reports = () => {
                                     </tr>
                                 )}
                                 {filteredTransactions.map((t: Transaction) => (
-                                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="p-3 text-gray-500 whitespace-nowrap">
+                                    <tr
+                                        key={t.id}
+                                        className={cn(
+                                            "border-b hover:bg-gray-50 transition-colors cursor-pointer",
+                                            t.status === 'VOIDED' && "opacity-50 line-through bg-gray-100 hover:bg-gray-200"
+                                        )}
+                                        onClick={() => setSelectedTx(t)}
+                                    >
+                                        <td className="p-3 text-sm text-gray-500 font-medium">
                                             {new Date(t.date).toLocaleString()}
                                         </td>
                                         <td className="p-3">
-                                            <span className={cn("px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider", getTypeColor(t.type))}>
-                                                {t.type}
+                                            <span className={cn(
+                                                "px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider",
+                                                t.status === 'VOIDED' ? "bg-gray-300 text-gray-600" : getTypeColor(t.type)
+                                            )}>
+                                                {t.status === 'VOIDED' ? 'ANULADA' : translateTxType(t.type)}
                                             </span>
                                         </td>
-                                        <td className="p-3 font-medium text-gray-700">{t.description}</td>
+                                        <td className="p-3 font-medium text-gray-700 truncate max-w-[200px]">
+                                            {t.status === 'VOIDED' && <span className="text-red-600 font-bold mr-2">[X]</span>}
+                                            {t.description}
+                                        </td>
                                         <td className="p-3 text-right font-mono font-bold text-gray-800">
                                             ₡{t.amount.toLocaleString()}
                                         </td>
@@ -464,6 +448,75 @@ export const Reports = () => {
                         Mostrando {filteredTransactions.length} transacciones
                     </div>
                 </Card>
+            )}
+
+            {/* Transaction Detail Modal */}
+            {selectedTx && (
+                <Modal isOpen={!!selectedTx} onClose={() => setSelectedTx(null)} title="Detalle de Transacción">
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center border-b pb-4">
+                            <span className="text-gray-500 text-sm font-medium">{new Date(selectedTx.date).toLocaleString()}</span>
+                            <span className={cn(
+                                "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
+                                selectedTx.status === 'VOIDED' ? "bg-gray-300 text-gray-800" : getTypeColor(selectedTx.type)
+                            )}>
+                                {selectedTx.status === 'VOIDED' ? 'ANULADA' : translateTxType(selectedTx.type)}
+                            </span>
+                        </div>
+
+                        {selectedTx.status === 'VOIDED' && (
+                            <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-red-800 text-sm font-medium flex items-center justify-center text-center">
+                                <div>
+                                    🚨 Esta transacción ha sido anulada. Sus efectos financieros e inventariables han sido revertidos.
+                                    {selectedTx.voidingTxId && <><br /><span className="text-xs opacity-75">(Ref: Contra-Asiento {selectedTx.voidingTxId?.split('-')[0]})</span></>}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="bg-gray-50 p-4 rounded-xl space-y-2 border border-gray-100">
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">ID de Referencia</div>
+                            <div className="text-gray-800 font-mono text-sm break-all">{selectedTx.id}</div>
+                            {selectedTx.voidingTxId && selectedTx.status !== 'VOIDED' && (
+                                <>
+                                    <div className="text-xs font-bold text-red-400 uppercase tracking-wider mt-2">Transacción Base (Anulada)</div>
+                                    <div className="text-gray-800 font-mono text-sm break-all">{selectedTx.voidingTxId}</div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="bg-gray-50 p-4 rounded-xl space-y-2 border border-gray-100">
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">Descripción del Movimiento</div>
+                            <div className="text-gray-800 font-medium text-base leading-relaxed">{selectedTx.description}</div>
+                            {renderTransactionDetails(selectedTx)}
+                        </div>
+
+                        <div className="bg-jardin-primary/10 p-6 rounded-2xl flex justify-between items-center border border-jardin-primary/20">
+                            <span className="font-black text-jardin-primary uppercase tracking-widest text-sm">Monto Registrado</span>
+                            <span className={cn(
+                                "text-3xl font-black text-jardin-primary",
+                                selectedTx.status === 'VOIDED' && "line-through opacity-50 text-gray-500"
+                            )}>
+                                ₡{selectedTx.amount.toLocaleString()}
+                            </span>
+                        </div>
+
+                        {/* Reversion Button */}
+                        {selectedTx.status !== 'VOIDED' && selectedTx.type !== 'INITIALIZATION' && !selectedTx.voidingTxId && (
+                            <button
+                                onClick={() => {
+                                    if (window.confirm('🚨 ¿Estás seguro de anular esta transacción?\n\nEsta acción revertirá los movimientos de dinero y regresará el inventario a su estado anterior usando las reglas FIFO. Este proceso NO se puede deshacer.')) {
+                                        revertTransaction(selectedTx.id);
+                                        setSelectedTx(null);
+                                    }
+                                }}
+                                className="w-full mt-4 flex items-center justify-center gap-2 py-4 rounded-xl bg-red-50 text-red-600 font-bold hover:bg-red-100 border border-red-200 transition-colors"
+                            >
+                                <X size={20} />
+                                Anular Transacción Físicamente
+                            </button>
+                        )}
+                    </div>
+                </Modal>
             )}
         </div>
     );
@@ -484,5 +537,145 @@ const getTypeColor = (t: string) => {
         case 'PRODUCTION': return "bg-amber-100 text-amber-700";
         case 'ADJUSTMENT': return "bg-purple-100 text-purple-700";
         default: return "bg-gray-100 text-gray-700";
+    }
+};
+
+const renderTransactionDetails = (tx: Transaction) => {
+    if (!tx.details) return null;
+
+    switch (tx.type) {
+        case 'SALE':
+            return (
+                <div className="bg-white border rounded-xl p-4 mt-4 space-y-3">
+                    <h4 className="font-bold text-gray-800 text-sm mb-2">Detalle de Productos Vendidos</h4>
+                    {tx.details.cart?.map((item: any, i: number) => (
+                        <div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-gray-100">
+                            <span className="text-gray-600">{item.qty}x {item.name}</span>
+                            <span className="font-medium">₡{(parseFloat(item.price || '0') * item.qty).toLocaleString()}</span>
+                        </div>
+                    ))}
+                    {tx.cogs !== undefined && (
+                        <div className="pt-2 flex justify-between text-xs text-gray-500">
+                            <span>Costo de Venta (Insumos)</span>
+                            <span>₡{tx.cogs.toLocaleString()}</span>
+                        </div>
+                    )}
+                    {tx.cogs !== undefined && (
+                        <div className="flex justify-between text-xs font-bold text-emerald-600 mt-1">
+                            <span>Margen Bruto</span>
+                            <span>₡{(tx.amount - tx.cogs).toLocaleString()}</span>
+                        </div>
+                    )}
+                    {tx.details.method && (
+                        <div className="pt-2 text-xs text-gray-400 capitalize">Cobrado en: <span className="font-bold text-gray-600">{translateMethod(tx.details.method)}</span></div>
+                    )}
+                </div>
+            );
+        case 'PURCHASE':
+            return (
+                <div className="bg-white border rounded-xl p-4 mt-4 space-y-3">
+                    <h4 className="font-bold text-gray-800 text-sm mb-2">Detalle de Compra</h4>
+                    <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                        <span className="text-gray-500">Item Adquirido:</span>
+                        <span className="font-medium text-gray-800">{tx.details.itemName} (x{tx.details.quantity})</span>
+                    </div>
+                    <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                        <span className="text-gray-500">Clasificación:</span>
+                        <span className="font-medium text-gray-800 capitalize">{tx.details.type === 'inventory' ? 'Inventario' : 'Activo Fijo'}</span>
+                    </div>
+                    {tx.details.providerName && (
+                        <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                            <span className="text-gray-500">Proveedor:</span>
+                            <span className="font-medium text-gray-800">{tx.details.providerName}</span>
+                        </div>
+                    )}
+                    {tx.details.method && (
+                        <div className="pt-2 text-xs text-gray-400 capitalize">Pagado con: <span className="font-bold text-gray-600">{translateMethod(tx.details.method)}</span></div>
+                    )}
+                </div>
+            );
+        case 'EXPENSE':
+            return (
+                <div className="bg-white border rounded-xl p-4 mt-4 space-y-3">
+                    <h4 className="font-bold text-gray-800 text-sm mb-2">Detalle de Gasto</h4>
+                    <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                        <span className="text-gray-500">Categoría Operativa:</span>
+                        <span className="font-medium text-gray-800">{tx.details.typeName}</span>
+                    </div>
+                    {tx.details.detail && (
+                        <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                            <span className="text-gray-500">Detalle:</span>
+                            <span className="font-medium text-gray-800 text-right max-w-[70%]">{tx.details.detail}</span>
+                        </div>
+                    )}
+                    {tx.details.provName && (
+                        <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                            <span className="text-gray-500">Entidad / Proveedor:</span>
+                            <span className="font-medium text-gray-800">{tx.details.provName}</span>
+                        </div>
+                    )}
+                    {tx.details.method && (
+                        <div className="pt-2 text-xs text-gray-400 capitalize">Extraído de: <span className="font-bold text-gray-600">{translateMethod(tx.details.method)}</span></div>
+                    )}
+                </div>
+            );
+        case 'PRODUCTION':
+            return (
+                <div className="bg-white border rounded-xl p-4 mt-4 space-y-3">
+                    <h4 className="font-bold text-gray-800 text-sm mb-2">Detalle de Producción (Cocina)</h4>
+                    <div className="flex justify-between text-sm bg-amber-50 p-3 rounded-lg border border-amber-100">
+                        <span className="text-amber-800 font-bold">Producto Final:</span>
+                        <span className="font-black text-amber-900">{tx.details.outputQty}x {tx.details.outputName}</span>
+                    </div>
+
+                    {tx.details.ingredients && tx.details.ingredients.length > 0 && (
+                        <>
+                            <div className="text-[10px] font-black text-gray-400 uppercase mt-4 mb-2 tracking-widest">Ingredientes Utilizados</div>
+                            <div className="space-y-1">
+                                {tx.details.ingredients.map((ing: any, i: number) => (
+                                    <div key={i} className="flex justify-between text-xs py-1 text-gray-600 border-b border-gray-50 last:border-0">
+                                        <span>{ing.qty}x {ing.item.name}</span>
+                                        <span className="font-mono">₡{(ing.qty * ing.item.cost).toFixed(2)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        case 'ADJUSTMENT':
+            return (
+                <div className="bg-white border rounded-xl p-4 mt-4 space-y-3">
+                    <h4 className="font-bold text-gray-800 text-sm mb-2">Dictamen de Auditoría y Ajuste</h4>
+
+                    {tx.details.account && (
+                        <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                            <span className="text-gray-500">Cuenta Rectificada:</span>
+                            <span className="font-medium text-gray-800 capitalize">{tx.details.account.replace('_', ' ')}</span>
+                        </div>
+                    )}
+
+                    {tx.details.itemsAdjusted !== undefined && (
+                        <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
+                            <span className="text-gray-500">Cantidad de Insumos Alt/Baja:</span>
+                            <span className="font-medium text-gray-800">{tx.details.itemsAdjusted} items</span>
+                        </div>
+                    )}
+
+                    <div className="flex justify-between text-sm mt-2 items-center">
+                        <span className="text-gray-500">Clasificación de Impacto:</span>
+                        <span className={cn("text-xs font-bold px-2 py-1 rounded", (tx.cogs !== undefined ? tx.cogs : tx.amount) > 0 ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600")}>
+                            {(tx.cogs !== undefined ? tx.cogs : tx.amount) > 0 ? '⬇ Pérdida (Gasto)' : '⬆ Superávit (Ingreso / Ganancia)'}
+                        </span>
+                    </div>
+                </div>
+            );
+        default:
+            return (
+                <div className="bg-gray-100 p-4 rounded-xl mt-4">
+                    <div className="text-xs font-bold text-gray-400 uppercase mb-2">Datos Crudos</div>
+                    <pre className="text-[10px] text-gray-600 font-mono whitespace-pre-wrap break-all">{JSON.stringify(tx.details, null, 2)}</pre>
+                </div>
+            );
     }
 };

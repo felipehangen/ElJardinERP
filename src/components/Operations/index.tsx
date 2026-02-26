@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { Button, Input, Modal, Combobox, cn } from '../ui';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ChevronDown } from 'lucide-react';
 import { AccountingActions } from '../../lib/accounting';
 import { AccountingFeedback } from '../AccountingFeedback';
 
@@ -20,7 +20,7 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
         inventory, addInventoryItem, updateInventoryItem,
         addAssetItem,
         providers, addProvider,
-        addProduct
+        addProduct, getLedgerAccounts
     } = useStore();
 
     const [tab, setTab] = useState<'inventory' | 'asset'>('inventory');
@@ -35,6 +35,13 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 
     // Handlers needed for Combobox to Quick Create
     const handleCreateInv = (name: string) => {
+        // Prevent duplicates by checking if case-insensitive name exists
+        const existing = inventory.find(i => i.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+            setForm(prev => ({ ...prev, itemId: existing.id, itemName: existing.name }));
+            return;
+        }
+
         // Intercept: Don't create yet. Open sub-dialog.
         setNewItem({ name, isProduct: false, cost: '' });
         setIsCreating(true);
@@ -76,15 +83,29 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 
         if (amount <= 0) return;
 
-        const prevAccounts = { ...accounts }; // Capture snapshot
+        const prevLedger = { ...accounts, ...getLedgerAccounts() }; // Capture snapshot
         let newAccounts = accounts;
         if (tab === 'inventory') {
             newAccounts = AccountingActions.purchaseInventory(accounts, amount, form.method as any);
 
-            // Update Inventory Stock & Cost (Weighted Average)
+            // Update Inventory Stock & Cost (FIFO Appending)
             if (form.itemId && quantity > 0) {
                 const item = inventory.find(i => i.id === form.itemId);
                 if (item) {
+                    const newBatch = {
+                        id: crypto.randomUUID(),
+                        date: new Date().toISOString(),
+                        stock: quantity,
+                        cost: amount / quantity
+                    };
+
+                    const existingBatches = item.batches && item.batches.length > 0 ? [...item.batches] : [{
+                        id: 'legacy-' + crypto.randomUUID(),
+                        date: new Date(0).toISOString(),
+                        cost: item.cost,
+                        stock: item.stock
+                    }];
+
                     const oldVal = item.cost * item.stock;
                     const purchaseVal = amount; // Total spent
                     const newStock = item.stock + quantity;
@@ -92,7 +113,8 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 
                     updateInventoryItem(form.itemId, {
                         stock: newStock,
-                        cost: newAvgCost
+                        cost: newAvgCost,
+                        batches: [...existingBatches, newBatch]
                     });
                 }
             }
@@ -117,14 +139,20 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
             }
         }
 
+        const targetProvider = providers?.find(p => p.id === form.provId)?.name;
+
         updateAccounts(() => newAccounts);
         addTransaction({
             id: crypto.randomUUID(), type: 'PURCHASE', date: new Date().toISOString(), amount,
-            description: `Compra ${tab === 'inventory' ? 'Insumo' : 'Activo'}: ${form.itemName} (x${quantity})`
+            description: `Compra ${tab === 'inventory' ? 'Insumo' : 'Activo'}: ${form.itemName} (x${quantity})`,
+            details: { itemName: form.itemName, quantity, method: form.method, type: tab, providerName: targetProvider }
         });
 
+        const freshState = useStore.getState();
+        const currLedger = { ...freshState.accounts, ...freshState.getLedgerAccounts() };
+
         // Trigger Feedback instead of closing immediately
-        setFeedback({ isOpen: true, prev: prevAccounts, curr: newAccounts, description: `Compraste: ${form.itemName} (x${quantity})` });
+        setFeedback({ isOpen: true, prev: prevLedger as any, curr: currLedger as any, description: `Compraste: ${form.itemName} (x${quantity})` });
         setForm({ itemId: '', itemName: '', amount: '', quantity: '1', method: 'caja_chica', provId: '' });
     };
 
@@ -242,7 +270,7 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 export const SaleModal = ({ isOpen, onClose }: any) => {
     const {
         accounts, updateAccounts, addTransaction,
-        products, addProduct
+        products, addProduct, getLedgerAccounts
     } = useStore();
 
     // Cart State: price is string to allow editing "500" -> "" -> "450"
@@ -282,13 +310,14 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
     const handleSubmit = () => {
         if (cart.length === 0 || totalAmount <= 0) return;
 
-        const prevAccounts = { ...accounts };
-        // Register Sale Logic
-        // For simplicity: We aggregate all items into one "Sale" transaction or one per item?
-        // Better: One transaction for the total amount.
-        // And we assume no inventory cost adjustment for now (Service based) as per V3 logic.
+        const prevLedger = { ...accounts, ...getLedgerAccounts() };
 
-        const newAccounts = AccountingActions.registerSale(accounts, totalAmount, 0, false, method as any);
+        // In the Periodic Inventory Model, sales do not track COGS immediately.
+        // Cost of Goods Sold is realized via physical "Inventory Adjustments" later.
+        let totalCOGS = 0;
+        let isInventoriable = false;
+
+        const newAccounts = AccountingActions.registerSale(accounts, totalAmount, totalCOGS, isInventoriable, method as any);
         updateAccounts(() => newAccounts);
 
         const desc = cart.map(i => `${i.name} (x${i.qty})`).join(', ');
@@ -298,10 +327,16 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
             type: 'SALE',
             date: new Date().toISOString(),
             amount: totalAmount,
-            description: `Venta: ${desc}`
+            description: `Venta: ${desc}`,
+            cogs: totalCOGS,
+            details: { cart, method }
         });
 
-        setFeedback({ isOpen: true, prev: prevAccounts, curr: newAccounts, description: `Venta Total: ₡${totalAmount.toLocaleString()} (${cart.length} items)` });
+        // We must fetch from fresh state because updateAccounts and addTransaction run synchronously but getLedgerAccounts relies on the new Tx
+        const freshState = useStore.getState();
+        const currLedger = { ...freshState.accounts, ...freshState.getLedgerAccounts() };
+
+        setFeedback({ isOpen: true, prev: prevLedger as any, curr: currLedger as any, description: `Venta Total: ₡${totalAmount.toLocaleString()} (${cart.length} items)` });
         setCart([]);
         setMethod('caja_chica');
     };
@@ -402,17 +437,13 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
 export const ExpenseModal = ({ isOpen, onClose }: any) => {
     const {
         accounts, updateAccounts, addTransaction,
-        expenseTypes, addExpenseType,
-        providers, addProvider
+        expenseTypes,
+        providers, addProvider, getLedgerAccounts
     } = useStore();
-    const [form, setForm] = useState({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '' });
+    const [form, setForm] = useState({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '', detail: '' });
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null });
 
-    const handleCreateType = (name: string) => {
-        const id = crypto.randomUUID();
-        addExpenseType({ id, name });
-        setForm(prev => ({ ...prev, typeId: id, typeName: name }));
-    };
+
 
     const handleCreateProv = (name: string) => {
         const id = crypto.randomUUID();
@@ -424,13 +455,23 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
         const amount = parseFloat(form.amount || '0');
         if (amount <= 0) return;
 
-        const prevAccounts = { ...accounts };
+        const prevLedger = { ...accounts, ...getLedgerAccounts() };
         const newAccounts = AccountingActions.payExpense(accounts, amount, form.method as any);
         updateAccounts(() => newAccounts);
-        addTransaction({ id: crypto.randomUUID(), type: 'EXPENSE', date: new Date().toISOString(), amount, description: `Gasto (${form.typeName})` });
+        addTransaction({
+            id: crypto.randomUUID(),
+            type: 'EXPENSE',
+            date: new Date().toISOString(),
+            amount,
+            description: `Gasto (${form.typeName})`,
+            details: { typeName: form.typeName, method: form.method, detail: form.detail.trim(), provName: form.provId ? providers.find(p => p.id === form.provId)?.name : 'N/A' }
+        });
 
-        setFeedback({ isOpen: true, prev: prevAccounts, curr: newAccounts, description: `Pago de: ${form.typeName}` });
-        setForm({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '' });
+        const freshState = useStore.getState();
+        const currLedger = { ...freshState.accounts, ...freshState.getLedgerAccounts() };
+
+        setFeedback({ isOpen: true, prev: prevLedger as any, curr: currLedger as any, description: `Pago de: ${form.typeName}` });
+        setForm({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '', detail: '' });
     };
 
     const closeAll = () => {
@@ -444,12 +485,24 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
                 <div className="space-y-4">
                     <div className="space-y-1">
                         <label className="text-xs font-medium ml-1">Tipo de Gasto</label>
-                        <Combobox
-                            items={expenseTypes}
-                            placeholder="Ej: Servicios públicos, publicidad, etc."
-                            onSelect={(i: any) => setForm({ ...form, typeId: i.id, typeName: i.name })}
-                            onCreate={handleCreateType}
-                        />
+                        <div className="relative">
+                            <select
+                                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:ring-2 focus:ring-jardin-primary focus:border-jardin-primary transition-all outline-none"
+                                value={form.typeName}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setForm({ ...form, typeId: val, typeName: val });
+                                }}
+                            >
+                                <option value="" disabled>Seleccione un tipo...</option>
+                                {expenseTypes.map((t: any) => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
+                                <ChevronDown size={16} />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="space-y-1">
@@ -460,6 +513,11 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
                             onSelect={(i: any) => setForm({ ...form, provId: i.id })}
                             onCreate={handleCreateProv}
                         />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium ml-1">Detalle (Opcional)</label>
+                        <Input placeholder="Ej: Factura #1234, Limpieza general..." value={form.detail} onChange={e => setForm({ ...form, detail: e.target.value })} />
                     </div>
 
                     <Input type="number" placeholder="Monto" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
@@ -486,7 +544,9 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
 export const ProductionModal = ({ isOpen, onClose }: any) => {
     const {
         inventory, updateInventoryItem,
-        addInventoryItem, accounts, addTransaction
+        addInventoryItem, accounts, addTransaction,
+        consumeInventoryFIFO, getLedgerAccounts,
+        simulateInventoryFIFO
     } = useStore();
 
     // State
@@ -525,10 +585,10 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
         setOutput({ ...output, name, id: newId });
     };
 
-    // Calculate Total Cost
+    // Calculate Total Cost dynamically simulating strict FIFO deduction
     const totalCost = ingredients.reduce((acc, curr) => {
         const qty = parseFloat(curr.qty || '0');
-        return acc + (curr.item.cost * qty);
+        return acc + simulateInventoryFIFO(curr.item.id, qty);
     }, 0);
 
     const outputQty = parseFloat(output.qty || '0');
@@ -537,47 +597,72 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
     const handleSubmit = () => {
         if (ingredients.length === 0 || !output.name || outputQty <= 0) return;
 
-        // 1. Consume Ingredients
+        let exactTotalCost = 0;
+
+        // 1. Consume Ingredients with FIFO
         ingredients.forEach(ing => {
             const qty = parseFloat(ing.qty || '0');
-            updateInventoryItem(ing.item.id, { stock: ing.item.stock - qty });
+            exactTotalCost += consumeInventoryFIFO(ing.item.id, qty);
         });
 
-        const prevAccounts = { ...accounts };
+        const prevLedger = { ...accounts, ...getLedgerAccounts() };
 
         // 2. Update Output Product
+        const newBatch = {
+            id: crypto.randomUUID(),
+            date: new Date().toISOString(),
+            stock: outputQty,
+            cost: exactTotalCost / outputQty
+        };
+
         const existing = inventory.find(i => i.name.toLowerCase() === output.name.toLowerCase());
 
         if (existing) {
-            const oldVal = existing.cost * existing.stock;
-            const newVal = totalCost;
-            const newStock = existing.stock + outputQty;
-            const newAvgCost = (oldVal + newVal) / newStock;
+            const existingBatches = existing.batches && existing.batches.length > 0 ? [...existing.batches] : [{
+                id: 'legacy-' + crypto.randomUUID(),
+                date: new Date(0).toISOString(),
+                cost: existing.cost,
+                stock: existing.stock
+            }];
 
-            updateInventoryItem(existing.id, { stock: newStock, cost: newAvgCost });
+            const newStock = existing.stock + outputQty;
+            const newTotalVal = (existing.cost * existing.stock) + exactTotalCost;
+            const newAvgCost = newStock > 0 ? newTotalVal / newStock : 0;
+
+            updateInventoryItem(existing.id, {
+                stock: newStock,
+                cost: newAvgCost,
+                batches: [...existingBatches, newBatch]
+            });
         } else {
-            // Fallback for race condition, though handleCreateOutput handles it
             addInventoryItem({
                 id: crypto.randomUUID(),
                 name: output.name,
                 stock: outputQty,
-                cost: unitCost
+                cost: newBatch.cost, // Use explicit exact batch cost
+                batches: [newBatch]
             });
         }
 
         // 3. Accounting
+        const ingText = ingredients.map(i => `${i.qty}x ${i.item.name}`).join(', ');
         addTransaction({
             id: crypto.randomUUID(),
             type: 'PRODUCTION',
             date: new Date().toISOString(),
-            amount: totalCost,
-            description: `Producción: ${outputQty} x ${output.name}`
+            amount: exactTotalCost,
+            description: `Cocina: ${outputQty}x ${output.name} (usando ${ingText})`,
+            cogs: exactTotalCost,
+            details: { outputName: output.name, outputQty, ingredients }
         });
+
+        const freshState = useStore.getState();
+        const currLedger = { ...freshState.accounts, ...freshState.getLedgerAccounts() };
 
         setFeedback({
             isOpen: true,
-            prev: prevAccounts,
-            curr: accounts,
+            prev: prevLedger as any,
+            curr: currLedger as any,
             description: `Produjiste: ${output.name} (${outputQty} unidades)`
         });
 
@@ -711,7 +796,7 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
 
 // 5. Inventory Count
 export const InventoryCountModal = ({ isOpen, onClose }: any) => {
-    const { inventory, batchUpdateInventory, accounts, updateAccounts, addTransaction } = useStore();
+    const { inventory, updateInventoryItem, accounts, updateAccounts, addTransaction, consumeInventoryFIFO } = useStore();
 
     // State: map of itemId -> newStock (string to allow typing)
     const [counts, setCounts] = useState<Record<string, string>>({});
@@ -746,26 +831,61 @@ export const InventoryCountModal = ({ isOpen, onClose }: any) => {
     const diff = getDiffValue();
 
     const handleSubmit = () => {
-        const itemUpdates: any[] = [];
+        let exactTotalDiff = 0;
+        let itemsAdjusted = 0;
 
-        // Build updates
+        // Process updates
         Object.entries(counts).forEach(([id, valStr]) => {
             const item = inventory.find(i => i.id === id);
-            if (item) {
-                const realStock = parseFloat(valStr || '0');
-                itemUpdates.push({ ...item, stock: realStock });
+            if (!item) return;
+
+            const realStock = parseFloat(valStr || '0');
+            const difference = item.stock - realStock; // Positive if stock was lost
+
+            if (difference > 0) {
+                // Lost stock -> FIFO deduction
+                const lostCost = consumeInventoryFIFO(id, difference);
+                exactTotalDiff += lostCost;
+                itemsAdjusted++;
+            } else if (difference < 0) {
+                // Found stock -> Add new batch at current average cost
+                const extraQty = Math.abs(difference);
+                const avgCost = item.cost;
+                const newBatch = {
+                    id: crypto.randomUUID(),
+                    date: new Date().toISOString(),
+                    stock: extraQty,
+                    cost: avgCost
+                };
+
+                const existingBatches = item.batches && item.batches.length > 0 ? [...item.batches] : [{
+                    id: 'legacy-' + crypto.randomUUID(),
+                    date: new Date(0).toISOString(),
+                    cost: item.cost,
+                    stock: item.stock
+                }];
+
+                const newStock = item.stock + extraQty;
+                const newTotalVal = (item.cost * item.stock) + (extraQty * avgCost);
+                const newAvgCost = newStock > 0 ? newTotalVal / newStock : 0;
+
+                updateInventoryItem(id, {
+                    stock: newStock,
+                    cost: newAvgCost,
+                    batches: [...existingBatches, newBatch]
+                });
+
+                exactTotalDiff -= (extraQty * avgCost); // Negative difference = gained value
+                itemsAdjusted++;
             }
         });
 
-        if (itemUpdates.length === 0) {
+        if (itemsAdjusted === 0) {
             onClose(); return;
         }
 
-        // 1. Commit Stock Updates
-        batchUpdateInventory(itemUpdates);
-
         // 2. Accounting Adjustment
-        const newAccounts = AccountingActions.adjustInventoryValues(accounts, diff);
+        const newAccounts = AccountingActions.adjustInventoryValues(accounts, exactTotalDiff);
         updateAccounts(() => newAccounts);
 
         // 3. Log
@@ -773,8 +893,10 @@ export const InventoryCountModal = ({ isOpen, onClose }: any) => {
             id: crypto.randomUUID(),
             type: 'ADJUSTMENT',
             date: new Date().toISOString(),
-            amount: diff,
-            description: `Toma de Inventario (Items: ${itemUpdates.length}, Dif: ₡${diff})`
+            amount: Math.abs(exactTotalDiff),
+            description: `Toma Físico (${itemsAdjusted} items, Val: ₡${exactTotalDiff.toFixed(2)})`,
+            cogs: exactTotalDiff,
+            details: { itemsAdjusted, exactTotalDiff, counts }
         });
 
         onClose();
@@ -864,13 +986,9 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
         Object.entries(counts).forEach(([id, valStr]) => {
             const item = safeAssets.find(i => i && i.id === id);
             if (item) {
-                const realQty = parseFloat(valStr || '0');
-                if ((item.quantity || 0) > 0) {
-                    const unitVal = (item.value || 0) / item.quantity;
-                    const sysVal = item.value || 0;
-                    const realVal = unitVal * realQty;
-                    diff += (sysVal - realVal);
-                }
+                const sysVal = item.value || 0;
+                const realVal = parseFloat(valStr || '0');
+                diff += (sysVal - realVal);
             }
         });
         return diff;
@@ -884,11 +1002,10 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
         Object.entries(counts).forEach(([id, valStr]) => {
             const item = safeAssets.find(i => i && i.id === id);
             if (item) {
-                const realQty = parseFloat(valStr || '0');
-                if ((item.quantity || 0) > 0) {
-                    const unitVal = (item.value || 0) / item.quantity;
-                    const realVal = unitVal * realQty;
-                    itemUpdates.push({ ...item, quantity: realQty, value: realVal });
+                const sysVal = item.value || 0;
+                const realVal = parseFloat(valStr || '0');
+                if (sysVal !== realVal) {
+                    itemUpdates.push({ ...item, value: realVal });
                 }
             }
         });
@@ -910,8 +1027,10 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
             id: crypto.randomUUID(),
             type: 'ADJUSTMENT',
             date: new Date().toISOString(),
-            amount: diff,
-            description: `Toma de Activos (Items: ${itemUpdates.length}, Dif: ₡${diff})`
+            amount: Math.abs(diff),
+            description: `Ajuste de Activos (Dif: ${diff > 0 ? '-' : '+'}₡${Math.abs(diff)})`,
+            cogs: diff,
+            details: { counts, diff }
         });
 
         onClose();
@@ -934,8 +1053,8 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
                         <thead className="text-gray-500 bg-gray-50 sticky top-0 z-10 text-xs uppercase">
                             <tr>
                                 <th className="p-3">Activo</th>
-                                <th className="p-3 text-center">Sistema</th>
-                                <th className="p-3 w-24">Físico</th>
+                                <th className="p-3 text-center">Valor Sistema</th>
+                                <th className="p-3 w-32">Valor Real</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -949,14 +1068,14 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
                             {filtered.map(item => (
                                 <tr key={item.id}>
                                     <td className="p-3 font-medium">{item.name}</td>
-                                    <td className="p-3 text-center text-gray-500">{item.quantity}</td>
+                                    <td className="p-3 text-center text-gray-500">₡{(item.value || 0).toLocaleString()}</td>
                                     <td className="p-3">
                                         <input
                                             type="number"
-                                            className={cn("w-20 p-1 border rounded text-center focus:outline-none focus:ring-2",
-                                                counts[item.id] && parseFloat(counts[item.id]) !== item.quantity ? "border-amber-400 bg-amber-50" : "border-gray-200"
+                                            className={cn("w-28 p-1 border rounded text-right focus:outline-none focus:ring-2",
+                                                counts[item.id] && parseFloat(counts[item.id]) !== (item.value || 0) ? "border-amber-400 bg-amber-50" : "border-gray-200"
                                             )}
-                                            placeholder={item.quantity.toString()}
+                                            placeholder={(item.value || 0).toString()}
                                             value={counts[item.id] !== undefined ? counts[item.id] : ''}
                                             onChange={e => setCounts({ ...counts, [item.id]: e.target.value })}
                                         />
@@ -981,4 +1100,106 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
     );
 };
 
+// 7. Cash & Bank Adjustment (Ajuste de Caja Chica y Bancos)
+export const CashAdjustmentModal = ({ isOpen, onClose }: any) => {
+    const { accounts, updateAccounts, addTransaction } = useStore();
 
+    // State
+    const [counts, setCounts] = useState<Record<string, string>>({
+        caja_chica: accounts.caja_chica.toString(),
+        banco: accounts.banco.toString()
+    });
+
+    const getDiffValue = (account: 'caja_chica' | 'banco') => {
+        const sysVal = accounts[account];
+        const realVal = parseFloat(counts[account] || '0');
+        // Positive diff means we lost money (System > Real)
+        return sysVal - realVal;
+    };
+
+    const diffCaja = getDiffValue('caja_chica');
+    const diffBanco = getDiffValue('banco');
+    const totalDiff = diffCaja + diffBanco;
+
+    const handleSubmit = () => {
+        if (totalDiff === 0) {
+            onClose(); return;
+        }
+
+        let newAccounts = { ...accounts };
+        if (diffCaja !== 0) {
+            newAccounts = AccountingActions.auditCash(newAccounts, accounts.caja_chica, parseFloat(counts.caja_chica || '0'), 'caja_chica');
+            addTransaction({
+                id: crypto.randomUUID(),
+                type: 'ADJUSTMENT',
+                date: new Date().toISOString(),
+                amount: Math.abs(diffCaja),
+                description: `Ajuste Caja Chica (Dif: ${diffCaja > 0 ? '-' : '+'}₡${Math.abs(diffCaja)})`
+            });
+        }
+        if (diffBanco !== 0) {
+            newAccounts = AccountingActions.auditCash(newAccounts, accounts.banco, parseFloat(counts.banco || '0'), 'banco');
+            addTransaction({
+                id: crypto.randomUUID(),
+                type: 'ADJUSTMENT',
+                date: new Date().toISOString(),
+                amount: Math.abs(diffBanco),
+                description: `Ajuste Bancos (Dif: ${diffBanco > 0 ? '-' : '+'}₡${Math.abs(diffBanco)})`
+            });
+        }
+
+        updateAccounts(() => newAccounts);
+
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Ajuste de Caja Chica y Bancos">
+            <div className="flex flex-col space-y-4">
+                <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex justify-between items-center">
+                    <div>
+                        <div className="text-emerald-800 font-bold mb-1">Caja Chica</div>
+                        <div className="text-xs text-emerald-600">Sistema: ₡{accounts.caja_chica.toLocaleString()}</div>
+                    </div>
+                    <div>
+                        <input
+                            type="number"
+                            className={cn("w-32 p-2 border rounded-lg text-right font-bold focus:outline-none focus:ring-2",
+                                diffCaja !== 0 ? "border-amber-400 bg-amber-50" : "border-gray-200"
+                            )}
+                            value={counts.caja_chica}
+                            onChange={e => setCounts({ ...counts, caja_chica: e.target.value })}
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex justify-between items-center">
+                    <div>
+                        <div className="text-blue-800 font-bold mb-1">Bancos</div>
+                        <div className="text-xs text-blue-600">Sistema: ₡{accounts.banco.toLocaleString()}</div>
+                    </div>
+                    <div>
+                        <input
+                            type="number"
+                            className={cn("w-32 p-2 border rounded-lg text-right font-bold focus:outline-none focus:ring-2",
+                                diffBanco !== 0 ? "border-amber-400 bg-amber-50" : "border-gray-200"
+                            )}
+                            value={counts.banco}
+                            onChange={e => setCounts({ ...counts, banco: e.target.value })}
+                        />
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-xl flex justify-between items-center mt-4">
+                    <div>
+                        <div className="text-xs font-bold text-gray-500 uppercase">Ajuste Valor (Diferencia)</div>
+                        <div className={cn("text-xl font-black", totalDiff > 0 ? "text-red-600" : totalDiff < 0 ? "text-green-600" : "text-gray-400")}>
+                            {totalDiff > 0 ? '-' : totalDiff < 0 ? '+' : ''}₡{Math.abs(totalDiff).toLocaleString()}
+                        </div>
+                    </div>
+                    <Button onClick={handleSubmit} disabled={totalDiff === 0}>Confirmar Ajuste</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};

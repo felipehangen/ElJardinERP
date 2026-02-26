@@ -78,18 +78,25 @@ export const Dashboard = ({ onOpenModal }: DashboardProps) => {
                     onClick={() => onOpenModal('production')}
                 />
                 <ActionBtn
-                    label="Inventario"
-                    sub="Conteo Físico"
+                    label="Ajuste de Inventario"
+                    sub="Conteo Físico y Mermas"
                     icon={<ClipboardList size={32} />}
                     color="bg-indigo-500"
                     onClick={() => onOpenModal('inventory_count')}
                 />
                 <ActionBtn
-                    label="Activos (Conteo)"
+                    label="Ajuste de Activos"
                     sub="Revisión Física"
                     icon={<ClipboardList size={32} />}
                     color="bg-blue-500"
                     onClick={() => onOpenModal('asset_count')}
+                />
+                <ActionBtn
+                    label="Ajuste Cajas / Bancos"
+                    sub="Cuadre de Efectivo"
+                    icon={<DollarSign size={32} />}
+                    color="bg-purple-600"
+                    onClick={() => onOpenModal('cash_adjustment')}
                 />
             </div>
         </div>
