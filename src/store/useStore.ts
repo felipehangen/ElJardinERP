@@ -34,6 +34,10 @@ interface StoreActions {
     addTransaction: (tx: Transaction) => void;
     updateTransaction: (id: string, updates: Partial<Transaction>) => void;
 
+    // Batches
+    batchUpdateInventory: (updates: InventoryItem[]) => void;
+    batchUpdateAssets: (updates: AssetItem[]) => void;
+
     // Ledger Methods
     getLedgerAccounts: (startDate?: Date | null, endDate?: Date | null) => Accounts;
     consumeInventoryFIFO: (itemId: string, quantityToConsume: number) => number; // Returns COGS

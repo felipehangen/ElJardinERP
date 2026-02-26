@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:pack": "find . -type f -not -path '*/.*' -not -path '*/node_modules/*' -exec xattr -c {} + && vite build && electron-builder build --mac"
+    "electron:pack": "node scripts/build-signed.cjs"
   },
   "build": {
     "appId": "com.eljardin.erp",

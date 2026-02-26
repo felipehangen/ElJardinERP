@@ -1018,8 +1018,8 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
 
         // Accounting Adjustment
         const newAccounts = { ...accounts };
-        newAccounts.activo_fijo -= diff;
-        newAccounts.gastos += diff;
+        newAccounts.activo_fijo = (newAccounts.activo_fijo || 0) - diff;
+        newAccounts.gastos = (newAccounts.gastos || 0) + diff;
 
         updateAccounts(() => newAccounts);
 

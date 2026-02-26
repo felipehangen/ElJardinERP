@@ -14,7 +14,12 @@ interface AccountingFeedbackProps {
 export const AccountingFeedback = ({ isOpen, onClose, prev, curr, title, description }: AccountingFeedbackProps) => {
 
     // Calculate Differences
-    const getDiff = (key: keyof Accounts) => curr[key] - prev[key];
+    const getDiff = (key: keyof Accounts) => {
+        const c = curr[key];
+        const p = prev[key];
+        if (typeof c === 'number' && typeof p === 'number') return c - p;
+        return 0;
+    };
 
     // Format currency
     const fmt = (n: number) => `₡${n.toLocaleString()}`;
