@@ -15,9 +15,6 @@ export const AccountingActions = {
             inventario: inventoryValue,
             activo_fijo: assetsValue,
             patrimonio: totalAssets, // Aporte Accionista
-            ventas: 0,
-            costos: 0,
-            gastos: 0
         };
     },
 
@@ -43,8 +40,7 @@ export const AccountingActions = {
     payExpense: (prev: Accounts, amount: number, method: 'caja_chica' | 'banco'): Accounts => {
         return {
             ...prev,
-            [method]: prev[method] - amount,
-            gastos: prev.gastos + amount
+            [method]: prev[method] - amount
         };
     },
 
@@ -58,15 +54,13 @@ export const AccountingActions = {
     ): Accounts => {
         let newAcc = {
             ...prev,
-            [method]: prev[method] + salePrice,
-            ventas: prev.ventas + salePrice
+            [method]: prev[method] + salePrice
         };
 
         if (isInventoriable) {
             newAcc = {
                 ...newAcc,
-                inventario: newAcc.inventario - cost,
-                costos: newAcc.costos + cost
+                inventario: newAcc.inventario - cost
             };
         }
         return newAcc;
@@ -89,16 +83,14 @@ export const AccountingActions = {
             // LOSS (Missing items) -> Expense/Cost
             return {
                 ...prev,
-                inventario: prev.inventario - totalDiffValue,
-                costos: prev.costos + totalDiffValue
+                inventario: prev.inventario - totalDiffValue
             };
         } else {
             // GAIN (Found items) -> Reduce Cost
             const absDiff = Math.abs(totalDiffValue);
             return {
                 ...prev,
-                inventario: prev.inventario + absDiff,
-                costos: prev.costos - absDiff
+                inventario: prev.inventario + absDiff
             };
         }
     },
@@ -109,16 +101,14 @@ export const AccountingActions = {
         if (diff > 0) {
             return {
                 ...prev,
-                [account]: prev[account] - diff,
-                gastos: prev.gastos + diff // Recorded as Expense (Loss)
+                [account]: prev[account] - diff
             };
         }
         // If Surplus, treated as Gain (Revenue) or Expense Reduction. Simplified as Other Income (Sale) here?
         // For safety, let's treat as Sales/Other Income
         return {
             ...prev,
-            [account]: prev[account] + Math.abs(diff),
-            ventas: prev.ventas + Math.abs(diff)
+            [account]: prev[account] + Math.abs(diff)
         };
     }
 };

@@ -15,16 +15,25 @@ export interface Accounts {
     inventario: number; // Sum of InventoryItem cost * stock
     activo_fijo: number; // Sum of AssetItem cost
     patrimonio: number; // Capital Social = Initial Assets - Initial Liabilities (0)
-    ventas: number;
-    costos: number;
-    gastos: number;
+    ventas?: number; // Kept as optional for legacy data parsing, but unused in Ledger V2
+    costos?: number;
+    gastos?: number;
+    _isLedger?: boolean; // Marker to know DB has been updated
+}
+
+export interface InventoryBatch {
+    id: string;
+    date: string;
+    cost: number;
+    stock: number; // Remaining stock in this specific batch
 }
 
 export interface InventoryItem {
     id: string;
     name: string; // "Leche 2L"
-    cost: number;
-    stock: number;
+    cost: number; // Weighted average cost (for UI display purposes)
+    stock: number; // Total stock (sum of all batches)
+    batches?: InventoryBatch[]; // Legacy items might not have this initially
 }
 
 export interface AssetItem {
@@ -57,7 +66,10 @@ export interface Transaction {
     type: 'PURCHASE' | 'SALE' | 'EXPENSE' | 'ADJUSTMENT' | 'PRODUCTION' | 'INITIALIZATION';
     amount: number;
     description: string;
+    cogs?: number; // Tracks exact Cost of Goods Sold for reporting correctly by month
     details?: any;
+    status?: 'ACTIVE' | 'VOIDED'; // Added for Reversions
+    voidingTxId?: string; // Links this transaction to the reversing event
 }
 
 export const INITIAL_STATE: AppState = {
@@ -68,9 +80,6 @@ export const INITIAL_STATE: AppState = {
         inventario: 0,
         activo_fijo: 0,
         patrimonio: 0,
-        ventas: 0,
-        costos: 0,
-        gastos: 0,
     },
     inventory: [],
     products: [],

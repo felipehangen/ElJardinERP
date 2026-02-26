@@ -64,7 +64,7 @@ export const Onboarding = () => {
         <div className="min-h-screen flex items-center justify-center p-4 bg-jardin-bg">
             <div className="w-full max-w-2xl">
                 <div className="flex flex-col items-center justify-center mb-8 text-jardin-primary gap-4">
-                    <img src="/logo3.png" alt="El Jardín Logo" className="w-40 h-40 object-contain" />
+                    <img src="logo3.png" alt="El Jardín Logo" className="w-40 h-40 object-contain" />
                     <h1 className="text-2xl font-bold text-gray-800 tracking-tight">Bienvenido</h1>
                 </div>
 
