@@ -49,7 +49,7 @@ export const SystemAuditTest = () => {
             id: crypto.randomUUID(), type: 'INITIALIZATION', date: new Date().toISOString(), amount: 150000, description: "Aporte de Capital (Simulación)"
         });
 
-        log("2. Comprando Insumo (Harina x10 a ₡1000 c/u) pagado con Banco");
+        log("2. Comprando Artículo de Inventario (Harina x10 a ₡1000 c/u) pagado con Banco");
         let harina = state.inventory.find(i => i.name === "Harina");
         const harinaId = harina ? harina.id : crypto.randomUUID();
         const harinaBatch = { id: crypto.randomUUID(), date: new Date().toISOString(), stock: 10, cost: 1000 };
@@ -64,7 +64,7 @@ export const SystemAuditTest = () => {
             state.addInventoryItem({ id: harinaId, name: "Harina", cost: 1000, stock: 10, batches: [harinaBatch] });
         }
         state.updateAccounts(prev => AccountingActions.purchaseInventory(prev, 10000, 'banco'));
-        state.addTransaction({ id: crypto.randomUUID(), type: 'PURCHASE', date: new Date().toISOString(), amount: 10000, description: "Compra Insumo: Harina (x10)", details: { itemName: "Harina", quantity: 10, method: "banco", type: "inventory", providerName: "Proveedor Harina S.A." } });
+        state.addTransaction({ id: crypto.randomUUID(), type: 'PURCHASE', date: new Date().toISOString(), amount: 10000, description: "Compra Inventario: Harina (x10)", details: { itemName: "Harina", quantity: 10, method: "banco", type: "inventory", providerName: "Proveedor Harina S.A." } });
 
         log("3. Comprando Activo Fijo (Batidora ₡20,000) pagado con Caja Chica");
         state.addAssetItem({ id: crypto.randomUUID(), name: "Batidora", value: 20000, quantity: 1 });
@@ -129,7 +129,7 @@ export const SystemAuditTest = () => {
         }
 
         state.updateAccounts(prev => AccountingActions.purchaseInventory(prev, 3000, 'banco'));
-        state.addTransaction({ id: crypto.randomUUID(), type: 'PURCHASE', date: new Date().toISOString(), amount: 3000, description: "Compra Insumo: Huevos (x30)", details: { itemName: "Huevos", quantity: 30, method: "banco", type: "inventory", providerName: "Granja Avícola" } });
+        state.addTransaction({ id: crypto.randomUUID(), type: 'PURCHASE', date: new Date().toISOString(), amount: 3000, description: "Compra Inventario: Huevos (x30)", details: { itemName: "Huevos", quantity: 30, method: "banco", type: "inventory", providerName: "Granja Avícola" } });
 
         log("9. Venta con Precio Modificado (1 Pan a ₡400) a Caja Chica");
         state.updateAccounts(prev => AccountingActions.registerSale(prev, 400, 0, false, 'caja_chica'));

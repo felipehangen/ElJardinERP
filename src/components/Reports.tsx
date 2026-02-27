@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { Card, cn, Input, Modal } from './ui';
-import { FileText, List, Box, Monitor, Wallet, X } from 'lucide-react';
+import { FileText, List, Box, Monitor, Wallet, X, Download } from 'lucide-react';
 import type { Transaction } from '../types';
 
 // Define helper to get YTD start date
@@ -28,8 +28,6 @@ const translateMethod = (method: string) => {
     return method;
 };
 
-
-
 export const Reports = () => {
     const { accounts, transactions, inventory, assets, getLedgerAccounts, revertTransaction } = useStore();
     const ledger = getLedgerAccounts();
@@ -50,7 +48,7 @@ export const Reports = () => {
     // Derived Financial Data (Global using Ledger)
     const totalActivos = ledger.caja_chica + ledger.banco + ledger.inventario + ledger.activo_fijo;
     const utilidadBrutaGlobal = (ledger.ventas || 0) - (ledger.costos || 0);
-    const utilidadNetaGlobal = utilidadBrutaGlobal - (ledger.gastos || 0);
+    const utilidadNetaGlobal = utilidadBrutaGlobal - (ledger.gastos || 0) + (ledger.otrosIngresos || 0) - (ledger.otrosGastos || 0);
     const totalPatrimonio = ledger.patrimonio + utilidadNetaGlobal;
 
     const financialData = useMemo(() => {
@@ -60,19 +58,30 @@ export const Reports = () => {
         // Get ledger accounts for the specified period
         const periodLedger = getLedgerAccounts(start, end);
 
+        const calcVentas = periodLedger.ventas || 0;
+        const calcCostos = periodLedger.costos || 0;
+        const calcGastos = periodLedger.gastos || 0;
+        const otrosIngresos = periodLedger.otrosIngresos || 0;
+        const otrosGastos = periodLedger.otrosGastos || 0;
+
+        const utilidadBruta = calcVentas - calcCostos;
+        const utilidadOperativa = utilidadBruta - calcGastos;
+        const utilidadNeta = utilidadOperativa + otrosIngresos - otrosGastos;
+
         return {
-            ventas: periodLedger.ventas || 0,
-            costos: periodLedger.costos || 0,
-            gastos: periodLedger.gastos || 0,
-            utilidadBruta: (periodLedger.ventas || 0) - (periodLedger.costos || 0),
-            utilidadNeta: (periodLedger.ventas || 0) - (periodLedger.costos || 0) - (periodLedger.gastos || 0)
+            ventas: calcVentas,
+            costos: calcCostos,
+            gastos: calcGastos,
+            otrosIngresos,
+            otrosGastos,
+            utilidadBruta,
+            utilidadOperativa,
+            utilidadNeta
         };
     }, [getLedgerAccounts, finStartDate, finEndDate]);
 
     // Use global utility for Balance Sheet equity calc (retained earnings are cumulative)
     const utilidadNeta = utilidadNetaGlobal;
-
-
 
     // Filter Transactions
     const filteredTransactions = useMemo(() => {
@@ -93,7 +102,12 @@ export const Reports = () => {
 
     // Filter Inventory
     const filteredInventory = useMemo(() => {
-        return inventory.filter(i => i.name.toLowerCase().includes(searchInv.toLowerCase()));
+        const filtered = inventory.filter(i => i.name.toLowerCase().includes(searchInv.toLowerCase()));
+        return [...filtered].sort((a, b) => {
+            if (a.stock === 0 && b.stock !== 0) return 1;
+            if (a.stock !== 0 && b.stock === 0) return -1;
+            return 0;
+        });
     }, [inventory, searchInv]);
 
     // Filter Assets
@@ -104,11 +118,25 @@ export const Reports = () => {
     return (
         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
             {/* Header / Tabs */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
                 <h2 className="text-2xl font-bold text-gray-800">Reportes</h2>
+                <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-2 px-4 py-2 bg-jardin-primary text-white rounded-xl font-bold hover:bg-jardin-primary-dark transition-all shadow-lg shadow-jardin-primary/20"
+                >
+                    <Download size={18} />
+                    Descargar PDF
+                </button>
             </div>
 
-            <div className="flex overflow-x-auto pb-2 gap-2 bg-gray-100 p-1 rounded-xl">
+            {/* Print Header */}
+            <div className="hidden print:block text-center border-b pb-6 mb-8">
+                <div className="text-3xl font-black text-jardin-primary mb-1">El Jardín ERP</div>
+                <div className="text-sm text-gray-500 uppercase tracking-widest font-bold">Reporte Oficial de Operaciones</div>
+                <div className="text-xs text-gray-400 mt-2">{new Date().toLocaleString()}</div>
+            </div>
+
+            <div className="flex overflow-x-auto pb-2 gap-2 bg-gray-100 p-1 rounded-xl no-print">
                 {[
                     { id: 'financial', label: 'Estados Financieros', icon: FileText },
                     { id: 'inventory', label: 'Inventario', icon: Box },
@@ -139,7 +167,7 @@ export const Reports = () => {
                                 <h3 className="font-bold text-lg text-gray-800">Estado de Resultados</h3>
                                 <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded">Rendimiento</span>
                             </div>
-                            <div className="flex gap-2 items-center flex-wrap justify-end">
+                            <div className="flex gap-2 items-center flex-wrap justify-end no-print">
                                 <div className="flex items-center gap-1">
                                     <Input
                                         type="date"
@@ -171,11 +199,21 @@ export const Reports = () => {
                         <div className="space-y-3 text-sm">
                             <Row label="(+) Ventas Totales" value={financialData.ventas} bold />
                             <Row label="(-) Costo de Ventas" value={financialData.costos} color="text-red-500" />
-                            <div className="border-t border-dashed my-2" />
-                            <Row label="= Utilidad Bruta" value={financialData.utilidadBruta} bold />
+                            <div className="border-t border-dashed my-2 border-emerald-500/30" />
+                            <Row label="= Utilidad Bruta" value={financialData.ventas - financialData.costos} bold />
                             <Row label="(-) Gastos Operativos" value={financialData.gastos} color="text-red-500" />
-                            <div className="border-t-2 border-emerald-100 my-2 pt-2" />
-                            <div className="flex justify-between items-end font-black text-xl text-jardin-primary bg-emerald-50 p-3 rounded-lg">
+
+                            {(financialData.otrosIngresos > 0 || financialData.otrosGastos > 0) ? (
+                                <>
+                                    <div className="border-t border-dashed my-2 border-emerald-500/30" />
+                                    <Row label="= Utilidad Operativa" value={financialData.utilidadOperativa} bold />
+                                    {financialData.otrosIngresos > 0 && <Row label="(+) Otros Ingresos (Faltantes/Sobrantes)" value={financialData.otrosIngresos} color="text-green-600" />}
+                                    {financialData.otrosGastos > 0 && <Row label="(-) Otros Gastos (Ajustes Negativos)" value={financialData.otrosGastos} color="text-red-500" />}
+                                </>
+                            ) : null}
+
+                            <div className="border-t-2 border-emerald-500 my-2 pt-2" />
+                            <div className="flex justify-between items-end font-black text-xl text-jardin-primary bg-emerald-50 p-3 rounded-lg border border-emerald-200 shadow-sm">
                                 <span className="text-sm font-bold uppercase text-emerald-800">Utilidad Neta</span>
                                 <span>₡{financialData.utilidadNeta.toLocaleString()}</span>
                             </div>
@@ -241,12 +279,14 @@ export const Reports = () => {
                 <Card className="space-y-4">
                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b pb-4">
                         <h3 className="font-bold text-lg">Reporte de Inventario</h3>
-                        <Input
-                            placeholder="Buscar por nombre..."
-                            value={searchInv}
-                            onChange={e => setSearchInv(e.target.value)}
-                            className="max-w-xs"
-                        />
+                        <div className="no-print">
+                            <Input
+                                placeholder="Buscar por nombre..."
+                                value={searchInv}
+                                onChange={e => setSearchInv(e.target.value)}
+                                className="max-w-xs"
+                            />
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -260,15 +300,21 @@ export const Reports = () => {
                             </thead>
                             <tbody className="divide-y">
                                 {filteredInventory.map(i => (
-                                    <tr key={i.id} className="hover:bg-gray-50">
-                                        <td className="p-3 font-medium">{i.name}</td>
+                                    <tr key={i.id} className={cn(
+                                        "hover:bg-gray-50 transition-colors",
+                                        i.stock === 0 && "text-red-600 bg-red-50/30 italic"
+                                    )}>
+                                        <td className="p-3 font-medium">
+                                            {i.name}
+                                            {i.stock === 0 && <span className="ml-2 text-[10px] font-bold uppercase tracking-tighter opacity-70">(Sin Stock)</span>}
+                                        </td>
                                         <td className="p-3 text-center">{i.stock}</td>
                                         <td className="p-3 text-right">₡{i.cost.toLocaleString()}</td>
                                         <td className="p-3 text-right font-bold">₡{(i.stock * i.cost).toLocaleString()}</td>
                                     </tr>
                                 ))}
                                 {filteredInventory.length === 0 && (
-                                    <tr><td colSpan={4} className="p-4 text-center text-gray-400">No se encontraron items.</td></tr>
+                                    <tr><td colSpan={4} className="p-4 text-center text-gray-400">No se encontraron artículos.</td></tr>
                                 )}
                             </tbody>
                             <tfoot className="bg-gray-50 font-bold">
@@ -289,12 +335,14 @@ export const Reports = () => {
                 <Card className="space-y-4">
                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b pb-4">
                         <h3 className="font-bold text-lg">Reporte de Activos Fijos</h3>
-                        <Input
-                            placeholder="Buscar por nombre..."
-                            value={searchAsset}
-                            onChange={e => setSearchAsset(e.target.value)}
-                            className="max-w-xs"
-                        />
+                        <div className="no-print">
+                            <Input
+                                placeholder="Buscar por nombre..."
+                                value={searchAsset}
+                                onChange={e => setSearchAsset(e.target.value)}
+                                className="max-w-xs"
+                            />
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
@@ -367,7 +415,7 @@ export const Reports = () => {
             {/* Transactions Tab */}
             {tab === 'transactions' && (
                 <Card className="space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4 justify-between items-end border-b pb-4">
+                    <div className="flex flex-col md:flex-row gap-4 justify-between items-end border-b pb-4 no-print">
                         <div className="flex flex-wrap gap-4 w-full md:w-auto">
                             <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Filtrar por Fecha</label>
                             <div className="flex gap-2">
@@ -444,7 +492,7 @@ export const Reports = () => {
                             </tbody>
                         </table>
                     </div>
-                    <div className="text-right text-xs text-gray-400">
+                    <div className="text-right text-xs text-gray-400 no-print">
                         Mostrando {filteredTransactions.length} transacciones
                     </div>
                 </Card>
@@ -518,6 +566,26 @@ export const Reports = () => {
                     </div>
                 </Modal>
             )}
+
+            {/* Print Styling */}
+            <style>{`
+                @media print {
+                    .no-print { display: none !important; }
+                    body { background: white !important; margin: 0; padding: 0; }
+                    .animate-in { animation: none !important; transform: none !important; }
+                    main { margin: 0 !important; padding: 0 !important; }
+                    .max-w-6xl { max-width: 100% !important; }
+                    .Card { border: 1px solid #eee !important; box-shadow: none !important; border-top-width: 4px !important; }
+                    .bg-gray-50 { background-color: #f9fafb !important; -webkit-print-color-adjust: exact; }
+                    .bg-emerald-50 { background-color: #ecfdf5 !important; -webkit-print-color-adjust: exact; }
+                    .bg-blue-50 { background-color: #eff6ff !important; -webkit-print-color-adjust: exact; }
+                    .text-jardin-primary { color: #065f46 !important; -webkit-print-color-adjust: exact; }
+                    table { page-break-inside: auto; }
+                    tr { page-break-inside: avoid; page-break-after: auto; }
+                    thead { display: table-header-group; }
+                    tfoot { display: table-footer-group; }
+                }
+            `}</style>
         </div>
     );
 };
@@ -525,7 +593,7 @@ export const Reports = () => {
 const Row = ({ label, value, color, bold }: any) => (
     <div className={cn("flex justify-between items-center py-1", bold && "font-bold text-gray-900", color)}>
         <span className={cn(bold ? "text-base" : "text-gray-600")}>{label}</span>
-        <span className="font-mono">{value < 0 ? '(' : ''}₡{Math.abs(value).toLocaleString()}{value < 0 ? ')' : ''}</span>
+        <span className="font-mono">{value < 0 ? '-' : ''}₡{Math.abs(value).toLocaleString()}</span>
     </div>
 );
 
@@ -556,7 +624,7 @@ const renderTransactionDetails = (tx: Transaction) => {
                     ))}
                     {tx.cogs !== undefined && (
                         <div className="pt-2 flex justify-between text-xs text-gray-500">
-                            <span>Costo de Venta (Insumos)</span>
+                            <span>Costo de Venta (Inventario)</span>
                             <span>₡{tx.cogs.toLocaleString()}</span>
                         </div>
                     )}
@@ -657,7 +725,7 @@ const renderTransactionDetails = (tx: Transaction) => {
 
                     {tx.details.itemsAdjusted !== undefined && (
                         <div className="flex justify-between text-sm border-b pb-2 border-gray-100">
-                            <span className="text-gray-500">Cantidad de Insumos Alt/Baja:</span>
+                            <span className="text-gray-500">Cantidad de Artículos Alt/Baja:</span>
                             <span className="font-medium text-gray-800">{tx.details.itemsAdjusted} items</span>
                         </div>
                     )}

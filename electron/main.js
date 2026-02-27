@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -15,6 +15,82 @@ function createWindow() {
         title: "El Jardín ERP",
         backgroundColor: '#F3F4F6' // jardin-bg
     });
+
+    // Create the Application Menu
+    const template = [
+        ...(process.platform === 'darwin' ? [{
+            label: app.name,
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                { role: 'services' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        }] : []),
+        {
+            label: 'Archivo',
+            submenu: [
+                {
+                    label: 'Imprimir',
+                    accelerator: 'CmdOrCtrl+P',
+                    click: () => {
+                        win.webContents.print();
+                    }
+                },
+                { type: 'separator' },
+                process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
+            ]
+        },
+        {
+            label: 'Edición',
+            submenu: [
+                { role: 'undo' },
+                { role: 'redo' },
+                { type: 'separator' },
+                { role: 'cut' },
+                { role: 'copy' },
+                { role: 'paste' },
+                { role: 'selectAll' }
+            ]
+        },
+        {
+            label: 'Ver',
+            submenu: [
+                { role: 'reload' },
+                { role: 'forceReload' },
+                { role: 'toggleDevTools' },
+                { type: 'separator' },
+                { role: 'resetZoom' },
+                { role: 'zoomIn' },
+                { role: 'zoomOut' },
+                { type: 'separator' },
+                { role: 'togglefullscreen' }
+            ]
+        },
+        {
+            label: 'Ventana',
+            submenu: [
+                { role: 'minimize' },
+                { role: 'zoom' },
+                ...(process.platform === 'darwin' ? [
+                    { type: 'separator' },
+                    { role: 'front' },
+                    { type: 'separator' },
+                    { role: 'window' }
+                ] : [
+                    { role: 'close' }
+                ])
+            ]
+        }
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
 
     // Check if we are in dev mode
     const isDev = process.env.NODE_ENV === 'development';

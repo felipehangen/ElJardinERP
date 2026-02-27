@@ -38,10 +38,10 @@ export const getAccountingDocumentation = () => {
         },
         mecanicas_operativas: {
             ventas: "Cuando se realiza una venta, aumenta la liquidez (Caja/Bancos) y aumentan los Ingresos (Ventas). Bajo el sistema de Inventario Periódico, la venta se trata como 100% ingreso puro en el momento; NO disminuye el inventario automáticamente ni registra Costos (COGS) hasta que se realice una Toma Física.",
-            compras_insumos: "Al adquirir insumos, disminuye liquidez y aumenta la cuenta de Inventario. Se crea un lote con fecha y costo unitario para posterior extracción FIFO. No afecta utilidades hasta ser consumido.",
+            compras_inventario: "Al adquirir artículos de inventario, disminuye liquidez y aumenta la cuenta de Inventario. Se crea un lote con fecha y costo unitario para posterior extracción FIFO. No afecta utilidades hasta ser consumido.",
             compras_activos: "Al adquirir activo físico, disminuye liquidez y aumenta Activo Fijo.",
             gastos: "Un pago directo (Luz, Agua, etc.) desplaza liquidez a la cuenta de Gastos Operativos.",
-            produccion_ensamblaje: "Al cocinar o ensamblar, se descuentan insumos mediante FIFO para calcular el Costo Exacto Consumido. Automáticamente se crea un nuevo Lote del producto terminado en Inventario equivalente a ese costo exacto, transfiriendo valor internamente sin impactar liquidez ni resultados.",
+            produccion_ensamblaje: "Al cocinar o ensamblar, se descuentan artículos del inventario mediante FIFO para calcular el Costo Exacto Consumido. Automáticamente se crea un nuevo Lote del producto terminado en Inventario equivalente a ese costo exacto, transfiriendo valor internamente sin impactar liquidez ni resultados.",
             auditorias_y_ajustes: {
                 caja_bancos: "Diferencias de efectivo físico vs lógico. Los faltantes se envían inmediatamente al Gasto. Los sobrantes sorpresivos se ajustan y acreditan como Ingresos adicionales.",
                 inventario: "Toma Física (conteo de existencias). Es el corazón del Sistema Periódico: al reportar que faltan unidades (ya sea porque se vendieron o se dañaron), el sistema extrae esos lotes usando precio FIFO y envía ese valor acumulado a la cuenta de Costos (COGS), cuadrando finalmente la Ecuación Contable y ajustando la Ganancia Neta.",

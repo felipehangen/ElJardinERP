@@ -34,12 +34,17 @@ export const Onboarding = () => {
     };
 
     // Step 2: Assets
-    const [assetForm, setAssetForm] = useState({ name: '', value: '' });
+    const [assetForm, setAssetForm] = useState({ name: '', value: '', quantity: '1' });
     const addAsset = () => {
         if (!assetForm.name || !assetForm.value) return;
-        const newItem: AssetItem = { id: crypto.randomUUID(), name: assetForm.name, value: parseFloat(assetForm.value || '0'), quantity: 1 };
+        const newItem: AssetItem = {
+            id: crypto.randomUUID(),
+            name: assetForm.name,
+            value: parseFloat(assetForm.value || '0'),
+            quantity: parseFloat(assetForm.quantity || '1')
+        };
         setTempAssets([...tempAssets, newItem]);
-        setAssetForm({ name: '', value: '' });
+        setAssetForm({ name: '', value: '', quantity: '1' });
     };
 
     // Finalize
@@ -71,7 +76,7 @@ export const Onboarding = () => {
                 {step === 1 && (
                     <Card>
                         <h2 className="text-xl font-bold mb-2">1. Inventario Inicial</h2>
-                        <p className="text-sm text-gray-500 mb-6">Agregue sus insumos actuales uno par uno. Especifique unidad en el nombre (ej: Leche 1L).</p>
+                        <p className="text-sm text-gray-500 mb-6">Agregue sus artículos de inventario uno por uno. Especifique unidad en el nombre (ej: Leche 1L).</p>
 
                         <div className="flex gap-2 mb-4">
                             <Input placeholder="Nombre (ej: Harina 1kg)" value={invForm.name} onChange={e => setInvForm({ ...invForm, name: e.target.value })} />
@@ -103,14 +108,15 @@ export const Onboarding = () => {
 
                         <div className="flex gap-2 mb-4">
                             <Input placeholder="Nombre (ej: Crepera Industrial)" value={assetForm.name} onChange={e => setAssetForm({ ...assetForm, name: e.target.value })} />
-                            <Input type="number" placeholder="Valor Estimado" className="w-40" value={assetForm.value} onChange={e => setAssetForm({ ...assetForm, value: e.target.value })} />
+                            <Input type="number" placeholder="Valor Total" className="w-32" value={assetForm.value} onChange={e => setAssetForm({ ...assetForm, value: e.target.value })} />
+                            <Input type="number" placeholder="Cant." className="w-20" value={assetForm.quantity} onChange={e => setAssetForm({ ...assetForm, quantity: e.target.value })} />
                             <Button onClick={addAsset}><Plus size={20} /></Button>
                         </div>
 
                         <div className="bg-gray-50 rounded-xl p-4 min-h-[150px] max-h-[300px] overflow-y-auto space-y-2 mb-6">
                             {tempAssets.map((item, idx) => (
                                 <div key={item.id} className="flex justify-between items-center text-sm bg-white p-2 rounded border">
-                                    <span>{item.name}</span>
+                                    <span>{item.name} (x{item.quantity})</span>
                                     <div className="flex items-center gap-4">
                                         <span className="font-mono">₡{item.value}</span>
                                         <button onClick={() => setTempAssets(tempAssets.filter((_, i) => i !== idx))} className="text-red-500"><Trash2 size={16} /></button>

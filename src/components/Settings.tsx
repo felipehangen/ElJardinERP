@@ -1,19 +1,30 @@
 import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { Button, Card, Input } from './ui';
-import { Download, Upload, Trash2, RotateCcw, FolderOpen } from 'lucide-react';
+import { Button, Card, Input, Modal } from './ui';
+import { Download, Upload, Trash2, RotateCcw, FolderOpen, Wallet, CheckCircle2 } from 'lucide-react';
 import { SystemAuditTest } from './SystemAuditTest';
 import { backupManager } from '../lib/backup';
 
 import { getAccountingDocumentation } from '../lib/accountingDocs';
+import packageJson from '../../package.json';
 
 export const Settings = () => {
-    const { importState, reset } = useStore();
+    const { importState, reset, updateAccounts, addTransaction } = useStore();
     const fileRef = useRef<HTMLInputElement>(null);
 
     const handleBackup = () => {
         const state = useStore.getState();
+
+        // Extract DB version from Zustand's persist wrapper in localStorage
+        const rawStorage = localStorage.getItem('jardin-erp-storage-v4');
+        const dbVersion = rawStorage ? JSON.parse(rawStorage).version : 1;
+
         const exportPayload = {
+            _metadata: {
+                appVersion: packageJson.version,
+                dbVersion: dbVersion,
+                exportDate: new Date().toISOString()
+            },
             ...state,
             documentacion_contable: getAccountingDocumentation()
         };
@@ -97,6 +108,35 @@ export const Settings = () => {
 
     const [deleteConfirm, setDeleteConfirm] = useState('');
 
+    const [capitalAmount, setCapitalAmount] = useState('');
+    const [capitalAccount, setCapitalAccount] = useState<'banco' | 'caja_chica'>('banco');
+    const [successMsg, setSuccessMsg] = useState<{ amount: number, account: string } | null>(null);
+
+    const handleCapitalContribution = () => {
+        const amount = parseFloat(capitalAmount);
+        if (isNaN(amount) || amount <= 0) {
+            alert("Monto inválido");
+            return;
+        }
+
+        updateAccounts(prev => ({
+            ...prev,
+            [capitalAccount]: prev[capitalAccount] + amount,
+            patrimonio: prev.patrimonio + amount
+        }));
+
+        addTransaction({
+            id: crypto.randomUUID(),
+            type: 'INITIALIZATION',
+            date: new Date().toISOString(),
+            amount: amount,
+            description: `Aporte de Capital (${capitalAccount === 'banco' ? 'Banco' : 'Caja Chica'})`
+        });
+
+        setSuccessMsg({ amount, account: capitalAccount });
+        setCapitalAmount('');
+    };
+
     return (
         <Card className="max-w-xl mx-auto space-y-8">
             <div>
@@ -113,35 +153,68 @@ export const Settings = () => {
             </div>
 
             <div className="pt-8 border-t">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-3">
                     <h3 className="font-bold text-lg">Copias de Seguridad Automáticas</h3>
                     {backupManager.isElectron() && (
-                        <Button variant="outline" size="sm" onClick={() => backupManager.openElectronBackupFolder()}>
-                            <FolderOpen className="mr-2" size={16} /> Abrir Carpeta
+                        <Button variant="outline" size="sm" onClick={() => backupManager.openElectronBackupFolder()} className="h-8 text-xs shrink-0">
+                            <FolderOpen className="mr-1.5" size={14} /> Abrir Carpeta
                         </Button>
                     )}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1">
                     {autoBackups.length === 0 ? (
-                        <p className="text-gray-500 text-sm bg-gray-50 p-4 border rounded-lg">Aún no hay respaldos automáticos. El sistema tomará una foto invisible de la base de datos una vez al día.</p>
+                        <p className="text-gray-500 text-xs bg-gray-50 p-3 rounded-md">Aún no hay respaldos automáticos. El sistema tomará una foto invisible de la base de datos una vez al día.</p>
                     ) : (
                         autoBackups.map(bkp => (
-                            <div key={bkp.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-white transition-colors">
-                                <div>
-                                    <p className="font-medium text-gray-800">{bkp.date}</p>
-                                    <p className="text-xs text-gray-400 font-mono mt-0.5">[{bkp.source === 'FILE_SYSTEM' ? 'Alojado en App Mac' : 'Alojado en Navegador'}] {bkp.id}</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={() => handleDownloadAutoBackup(bkp.id, bkp.source)}>
+                            <div key={bkp.id} className="flex flex-wrap sm:flex-nowrap items-center justify-between py-1.5 px-2 bg-gray-50/50 hover:bg-white border text-sm rounded transition-colors group">
+                                <span className="font-medium text-gray-700 w-24 shrink-0">{bkp.date}</span>
+                                <span className="text-xs text-gray-400 font-mono truncate px-2">{bkp.id}</span>
+                                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button size="icon" variant="ghost" onClick={() => handleDownloadAutoBackup(bkp.id, bkp.source)} className="h-7 w-7 text-gray-400 hover:text-sky-600">
                                         <Download size={14} />
                                     </Button>
-                                    <Button size="sm" variant="outline" onClick={() => handleRestoreAutoBackup(bkp.id, bkp.source)} className="hover:bg-red-50 hover:text-red-600 hover:border-red-200">
+                                    <Button size="icon" variant="ghost" onClick={() => handleRestoreAutoBackup(bkp.id, bkp.source)} className="h-7 w-7 text-gray-400 hover:text-red-600">
                                         <RotateCcw size={14} />
                                     </Button>
                                 </div>
                             </div>
                         ))
                     )}
+                </div>
+            </div>
+
+            <div className="pt-8 border-t">
+                <h3 className="font-bold text-lg mb-4">Aportes de Capital</h3>
+                <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 flex flex-col gap-4">
+                    <p className="text-xs text-emerald-800/80">
+                        Registra inyecciones de nuevo capital al negocio. Esto incrementará tus fondos disponibles y tu Patrimonio contable simultáneamente.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                        <div className="flex-1 w-full relative">
+                            <label className="text-[10px] font-bold text-emerald-700 uppercase block mb-1">Monto (₡)</label>
+                            <Input
+                                type="number"
+                                value={capitalAmount}
+                                onChange={e => setCapitalAmount(e.target.value)}
+                                placeholder="Ej: 50000"
+                                className="bg-white border-emerald-200 focus:border-emerald-500 h-10 relative z-10 py-2"
+                            />
+                        </div>
+                        <div className="flex-1 w-full relative h-[60px] sm:h-auto">
+                            <label className="text-[10px] font-bold text-emerald-700 uppercase block mb-1 absolute sm:relative top-0 left-0">Destino</label>
+                            <select
+                                className="w-full h-10 px-3 bg-white border border-emerald-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 absolute sm:relative bottom-0 left-0"
+                                value={capitalAccount}
+                                onChange={(e: any) => setCapitalAccount(e.target.value)}
+                            >
+                                <option value="banco">Bancos</option>
+                                <option value="caja_chica">Caja Chica</option>
+                            </select>
+                        </div>
+                        <Button onClick={handleCapitalContribution} className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto shrink-0 flex items-center justify-center whitespace-nowrap h-10 px-6 font-bold mt-1 sm:mt-0 shadow-sm text-sm">
+                            <Wallet className="mr-2" size={18} /> Registrar
+                        </Button>
+                    </div>
                 </div>
             </div>
 
@@ -183,6 +256,35 @@ export const Settings = () => {
             <div className="pt-8 border-t">
                 <SystemAuditTest />
             </div>
+
+            <Modal isOpen={!!successMsg} onClose={() => setSuccessMsg(null)}>
+                <div className="text-center py-6 px-4">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
+                        <CheckCircle2 className="text-jardin-primary w-8 h-8" />
+                    </div>
+                    <h2 className="text-2xl font-black text-gray-900 mb-2">¡Aporte Registrado!</h2>
+                    <p className="text-gray-500 mb-6">
+                        El aporte de capital se materializó e impactó las cuentas correctamente.
+                    </p>
+
+                    <div className="bg-gray-50 rounded-2xl p-4 mb-6 border border-gray-100">
+                        <div className="flex justify-between items-center py-2 border-b border-gray-200/50 last:border-0">
+                            <span className="text-sm text-gray-500 font-medium">Monto del Aporte</span>
+                            <span className="font-bold text-gray-900">₡{(successMsg?.amount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-gray-200/50 last:border-0">
+                            <span className="text-sm text-gray-500 font-medium">Cuenta Destino</span>
+                            <span className="font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded text-sm">
+                                {successMsg?.account === 'banco' ? 'Bancos' : 'Caja Chica'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <Button onClick={() => setSuccessMsg(null)} className="w-full text-lg py-6 bg-jardin-primary hover:bg-green-700 shadow-md">
+                        Entendido
+                    </Button>
+                </div>
+            </Modal>
         </Card>
     );
 };
