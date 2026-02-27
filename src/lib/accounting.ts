@@ -18,7 +18,7 @@ export const AccountingActions = {
         };
     },
 
-    // 2. Purchase (Insumo) -> Inventory
+    // 2. Purchase (Inventario) -> Inventory
     purchaseInventory: (prev: Accounts, amount: number, method: 'caja_chica' | 'banco'): Accounts => {
         return {
             ...prev,
@@ -66,7 +66,7 @@ export const AccountingActions = {
         return newAcc;
     },
 
-    // 5. Production (Insumos -> Producto Transformado)
+    // 5. Production (Inventario -> Producto Transformado)
     // Value moves from Inventory (Ingredients) to Inventory (Finished Product).
     // Total Inventory Value remains constant (Asset Exchange), ignoring labor/overhead for now.
     production: (prev: Accounts): Accounts => {

@@ -37,7 +37,7 @@ export const Dashboard = ({ onOpenModal }: DashboardProps) => {
             {/* Header Metric */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between">
                 <div>
-                    <h2 className="text-gray-400 font-bold uppercase tracking-widest text-sm mb-2">Ventas Acumuladas {monthName}</h2>
+                    <h2 className="text-gray-400 font-bold uppercase tracking-widest text-sm mb-2">Ventas acumuladas en el mes de {monthName}</h2>
                     <div className="text-5xl font-black text-gray-800 tracking-tight">
                         ₡{monthlySales.toLocaleString()}
                     </div>
@@ -58,14 +58,14 @@ export const Dashboard = ({ onOpenModal }: DashboardProps) => {
                 />
                 <ActionBtn
                     label="Comprar"
-                    sub="Insumos o Activos"
+                    sub="Inventario o Activos"
                     icon={<ShoppingCart size={32} />}
                     color="bg-emerald-600"
                     onClick={() => onOpenModal('purchase')}
                 />
                 <ActionBtn
-                    label="Pagar Gastos"
-                    sub="Servicios, Salarios..."
+                    label="Gastar"
+                    sub="Servicios, Salarios, Clavos..."
                     icon={<DollarSign size={32} />}
                     color="bg-rose-500"
                     onClick={() => onOpenModal('expense')}
@@ -79,7 +79,7 @@ export const Dashboard = ({ onOpenModal }: DashboardProps) => {
                 />
                 <ActionBtn
                     label="Ajuste de Inventario"
-                    sub="Conteo Físico y Mermas"
+                    sub="Conteo Físico"
                     icon={<ClipboardList size={32} />}
                     color="bg-indigo-500"
                     onClick={() => onOpenModal('inventory_count')}

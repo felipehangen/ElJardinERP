@@ -34,16 +34,30 @@ export const Card = ({ children, className }: { children: React.ReactNode, class
 );
 
 export const Modal = ({ isOpen, onClose, title, children, className }: any) => {
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen && onClose) {
+                onClose();
+            }
+        };
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className={cn("bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200", className)}>
-                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className={cn("bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-200", className)}>
+                <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
                     <h3 className="font-bold text-lg text-gray-800">{title}</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600">&times;</button>
                 </div>
-                <div className="p-6">{children}</div>
+                <div className="p-6 overflow-y-auto">{children}</div>
             </div>
+            {/* Click outside closer helper */}
+            <div className="fixed inset-0 z-[-1]" onClick={onClose} />
         </div>
     );
 };
@@ -54,13 +68,18 @@ interface ComboboxProps {
     placeholder?: string;
     onSelect: (item: any) => void;
     onCreate?: (name: string) => void;
+    onInputChange?: (value: string) => void;
     value?: string;
 }
 
-export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: ComboboxProps) => {
+export const Combobox = ({ items, placeholder, onSelect, onCreate, onInputChange, value }: ComboboxProps) => {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState(value || ''); // Initialize with value
-    const filtered = items.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+
+    // If empty, show recent/all. If typing, filter.
+    const filtered = query.trim() === ''
+        ? items.slice(0, 10) // Show up to 10 items when just opened
+        : items.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
 
     // Sync with external value changes
     useEffect(() => {
@@ -73,13 +92,13 @@ export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: Comb
     const handleCreate = () => {
         if (onCreate && query.trim()) {
             onCreate(query);
-            // Do NOT clear query here if controlled, let parent decide via value prop.
-            // But if uncontrolled, we might want to clear?
-            // "No se queda seleccionado" -> implies User WANTS it to stay.
-            // If parent updates 'value' to the new name, useEffect sets query -> It stays.
-            // If parent passes value="", useEffect sets query -> It clears.
-            // So we rely on parent.
             setOpen(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'ArrowDown') {
+            setOpen(true);
         }
     };
 
@@ -91,11 +110,17 @@ export const Combobox = ({ items, placeholder, onSelect, onCreate, value }: Comb
                     className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-jardin-primary/20 focus:border-jardin-primary transition-all"
                     placeholder={placeholder}
                     value={query}
-                    onChange={e => { setQuery(e.target.value); setOpen(true); }}
+                    onChange={e => {
+                        const val = e.target.value;
+                        setQuery(val);
+                        setOpen(true);
+                        if (onInputChange) onInputChange(val);
+                    }}
                     onFocus={() => setOpen(true)}
+                    onKeyDown={handleKeyDown}
                 />
             </div>
-            {open && query && (
+            {open && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 p-1 z-20 max-h-60 overflow-y-auto">
                     {filtered.length > 0 ? (
                         filtered.map(item => (

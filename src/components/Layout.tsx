@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { cn } from './ui';
 import { LayoutDashboard, Package, BarChart3, Settings as SettingsIcon, Menu, X } from 'lucide-react';
+import packageJson from '../../package.json';
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -30,7 +31,7 @@ export const Layout = ({ children, currentTab, onTabChange }: LayoutProps) => {
             <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 p-4 fixed h-full z-10">
                 <div className="mb-10 px-4 pt-4 flex flex-col items-center text-center">
                     <img src="logo3.png" alt="El Jardín Logo" className="w-40 h-40 object-contain mb-2 hover:scale-105 transition-transform" />
-                    <div className="text-xs text-gray-400 font-medium tracking-widest uppercase">ERP Contable v1.0</div>
+                    <div className="text-xs text-gray-400 font-medium tracking-widest uppercase">ERP Contable v{packageJson.version}</div>
                 </div>
                 <nav className="space-y-2 flex-1">
                     <NavItem id="ops" icon={<LayoutDashboard size={20} />} label="Operaciones" />

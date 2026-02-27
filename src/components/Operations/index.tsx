@@ -13,22 +13,53 @@ const PaymentMethod = ({ value, onChange }: any) => (
     </div>
 );
 
-// 1. Purchase (Insumo/Activo)
+const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, data }: any) => {
+    if (!isOpen) return null;
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title={title}>
+            <div className="space-y-4">
+                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 text-amber-800 text-sm flex gap-3 items-center">
+                    <span className="text-xl">⚠️</span>
+                    <p className="font-medium">Por favor verifique los datos antes de registrar la operación.</p>
+                </div>
+                <div className="space-y-2 border rounded-2xl p-4 bg-gray-50/50">
+                    {data.map((item: any, idx: number) => (
+                        <div key={idx} className="flex justify-between items-center py-1 border-b border-gray-100 last:border-0">
+                            <span className="text-gray-500 text-xs font-bold uppercase tracking-wider">{item.label}</span>
+                            <span className={cn("font-bold text-gray-900", item.highlight && "text-jardin-primary text-lg")}>{item.value}</span>
+                        </div>
+                    ))}
+                </div>
+                <div className="flex gap-3 pt-2">
+                    <Button variant="ghost" onClick={onClose} className="flex-1">Corregir</Button>
+                    <Button onClick={onConfirm} className="flex-1">Confirmar</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
+// 1. Purchase (Inventario/Activo)
 export const PurchaseModal = ({ isOpen, onClose }: any) => {
     const {
         accounts, updateAccounts, addTransaction,
         inventory, addInventoryItem, updateInventoryItem,
         addAssetItem,
         providers, addProvider,
-        addProduct, getLedgerAccounts
+        getLedgerAccounts
     } = useStore();
 
     const [tab, setTab] = useState<'inventory' | 'asset'>('inventory');
     const [form, setForm] = useState({ itemId: '', itemName: '', amount: '', quantity: '1', method: 'caja_chica', provId: '' });
+    const [tempProvName, setTempProvName] = useState('');
 
     // Smart Create State
     const [isCreating, setIsCreating] = useState(false);
-    const [newItem, setNewItem] = useState({ name: '', isProduct: false, cost: '' });
+    const [newItem, setNewItem] = useState({ name: '', cost: '' });
+
+    // Confirmation State
+    const [isConfirming, setIsConfirming] = useState(false);
+    const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
     // Feedback State
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null, description: '' });
@@ -43,32 +74,27 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
         }
 
         // Intercept: Don't create yet. Open sub-dialog.
-        setNewItem({ name, isProduct: false, cost: '' });
+        setNewItem({ name, cost: '' });
         setIsCreating(true);
     };
 
     const confirmCreateInv = () => {
         if (!newItem.name) return;
+        const trimmedName = newItem.name.trim();
+        if (inventory.some(i => i.name.toLowerCase() === trimmedName.toLowerCase())) {
+            setDuplicateError('Ese artículo ya existe en el catálogo.');
+            return;
+        }
         const id = crypto.randomUUID();
         const cost = parseFloat(newItem.cost || '0');
 
         // 1. Create Inventory Item
         addInventoryItem({ id, name: newItem.name, cost, stock: 0 });
 
-        // 2. Create Product (if checked)
-        if (newItem.isProduct) {
-            addProduct({
-                id: crypto.randomUUID(),
-                name: newItem.name,
-                price: 0, // Price to be set in catalog
-                inventoryItemId: id // Linked
-            });
-        }
-
-        // 3. Select it in form
+        // 2. Select it in form
         setForm(prev => ({ ...prev, itemId: id, itemName: newItem.name }));
         setIsCreating(false);
-        setNewItem({ name: '', isProduct: false, cost: '' });
+        setNewItem({ name: '', cost: '' });
     };
 
     const handleCreateProv = (name: string) => {
@@ -79,9 +105,37 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 
     const handleSubmit = () => {
         const amount = parseFloat(form.amount || '0');
-        const quantity = parseFloat(form.quantity || '0');
 
-        if (amount <= 0) return;
+        if (amount <= 0 || !form.itemName) return;
+
+        // Auto-creation check
+        if (tab === 'inventory' && !form.itemId) {
+            handleCreateInv(form.itemName);
+            return;
+        }
+
+        setIsConfirming(true);
+    };
+
+    const executeSubmit = () => {
+        setIsConfirming(false);
+
+        // NEW: Auto-create provider if typed but not selected
+        let finalProvId = form.provId;
+        if (!finalProvId && tempProvName.trim()) {
+            const existing = providers.find(p => p.name.toLowerCase() === tempProvName.toLowerCase());
+            if (existing) {
+                finalProvId = existing.id;
+            } else {
+                finalProvId = crypto.randomUUID();
+                addProvider({ id: finalProvId, name: tempProvName });
+            }
+        }
+
+        const amount = parseFloat(form.amount || '0');
+        const quantity = parseFloat(form.quantity || '1');
+
+        if (amount <= 0 && tab === 'inventory') return; // Extra safety
 
         const prevLedger = { ...accounts, ...getLedgerAccounts() }; // Capture snapshot
         let newAccounts = accounts;
@@ -139,12 +193,12 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
             }
         }
 
-        const targetProvider = providers?.find(p => p.id === form.provId)?.name;
+        const targetProvider = providers?.find(p => p.id === (finalProvId || form.provId))?.name || tempProvName;
 
         updateAccounts(() => newAccounts);
         addTransaction({
             id: crypto.randomUUID(), type: 'PURCHASE', date: new Date().toISOString(), amount,
-            description: `Compra ${tab === 'inventory' ? 'Insumo' : 'Activo'}: ${form.itemName} (x${quantity})`,
+            description: `Compra ${tab === 'inventory' ? 'Inventario' : 'Activo'}: ${form.itemName} (x${quantity})`,
             details: { itemName: form.itemName, quantity, method: form.method, type: tab, providerName: targetProvider }
         });
 
@@ -154,20 +208,22 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
         // Trigger Feedback instead of closing immediately
         setFeedback({ isOpen: true, prev: prevLedger as any, curr: currLedger as any, description: `Compraste: ${form.itemName} (x${quantity})` });
         setForm({ itemId: '', itemName: '', amount: '', quantity: '1', method: 'caja_chica', provId: '' });
+        setTempProvName('');
     };
 
     const closeAll = () => {
         setFeedback({ isOpen: false, prev: null, curr: null, description: '' });
+        setIsConfirming(false);
         onClose();
     };
 
     return (
         <>
-            <Modal isOpen={isOpen && !feedback.isOpen} onClose={onClose} title="Registrar Compra">
+            <Modal isOpen={isOpen && !feedback.isOpen && !isConfirming} onClose={onClose} title="Registrar Compra">
                 {isCreating ? (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
                         <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                            <h3 className="font-bold text-blue-900 mb-2">Nuevo Insumo</h3>
+                            <h3 className="font-bold text-blue-900 mb-2">Nuevo Artículo de Inventario</h3>
                             <p className="text-xs text-blue-700 mb-4">Especifique unidad en el nombre (ej: Leche 1L)</p>
 
                             <div className="space-y-3">
@@ -180,19 +236,6 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                                     <label className="text-xs font-bold text-gray-500 uppercase">Costo Unitario (Opcional)</label>
                                     <Input type="number" value={newItem.cost} onChange={e => setNewItem({ ...newItem, cost: e.target.value })} placeholder="0.00" />
                                 </div>
-
-                                <label className="flex items-center gap-3 p-3 bg-white rounded border cursor-pointer hover:bg-gray-50">
-                                    <input
-                                        type="checkbox"
-                                        className="w-5 h-5 accent-jardin-primary"
-                                        checked={newItem.isProduct}
-                                        onChange={e => setNewItem({ ...newItem, isProduct: e.target.checked })}
-                                    />
-                                    <div className="text-sm">
-                                        <div className="font-bold">Disponible para Venta</div>
-                                        <div className="text-xs text-gray-500">Crear automáticamente en Menú</div>
-                                    </div>
-                                </label>
                             </div>
 
                             <div className="flex gap-2 mt-4">
@@ -204,18 +247,19 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                 ) : (
                     <div className="space-y-4">
                         <div className="flex bg-gray-100 p-1 rounded-xl">
-                            <button onClick={() => setTab('inventory')} className={cn("flex-1 py-2 rounded-lg text-sm font-medium", tab === 'inventory' && "bg-white shadow-sm")}>Insumo</button>
+                            <button onClick={() => setTab('inventory')} className={cn("flex-1 py-2 rounded-lg text-sm font-medium", tab === 'inventory' && "bg-white shadow-sm")}>Inventario</button>
                             <button onClick={() => setTab('asset')} className={cn("flex-1 py-2 rounded-lg text-sm font-medium", tab === 'asset' && "bg-white shadow-sm")}>Activo Fijo</button>
                         </div>
 
                         {tab === 'inventory' ? (
                             <>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-medium ml-1">Buscar Insumo</label>
+                                    <label className="text-xs font-medium ml-1">Buscar Artículo</label>
                                     <Combobox
                                         items={inventory}
-                                        placeholder="Buscar o crear insumo..."
+                                        placeholder="Buscar o crear artículo..."
                                         onSelect={(i: any) => setForm({ ...form, itemId: i.id, itemName: i.name })}
+                                        onInputChange={(val) => setForm({ ...form, itemName: val, itemId: '' })}
                                         onCreate={handleCreateInv}
                                     />
                                 </div>
@@ -229,8 +273,10 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                             <Combobox
                                 items={providers}
                                 placeholder="Buscar Proveedor..."
-                                onSelect={(i: any) => setForm({ ...form, provId: i.id })}
+                                onSelect={(i: any) => { setForm({ ...form, provId: i.id }); setTempProvName(i.name); }}
+                                onInputChange={(val) => { setTempProvName(val); if (!val) setForm({ ...form, provId: '' }); }}
                                 onCreate={handleCreateProv}
+                                value={tempProvName} // Control the input value
                             />
                         </div>
 
@@ -251,6 +297,20 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                 )}
             </Modal>
 
+            <ConfirmDialog
+                isOpen={isConfirming}
+                onClose={() => setIsConfirming(false)}
+                onConfirm={executeSubmit}
+                title="Confirmar Compra"
+                data={[
+                    { label: "Artículo", value: form.itemName },
+                    { label: "Cantidad", value: form.quantity },
+                    { label: "Monto Total", value: `₡${parseFloat(form.amount || '0').toLocaleString()}`, highlight: true },
+                    { label: "Método", value: form.method === 'caja_chica' ? 'Caja Chica' : 'Banco' },
+                    { label: "Proveedor", value: providers.find(p => p.id === form.provId)?.name || tempProvName || 'No especificado' }
+                ]}
+            />
+
             {feedback.isOpen && (
                 <AccountingFeedback
                     isOpen={feedback.isOpen}
@@ -261,6 +321,21 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                     description={feedback.description}
                 />
             )}
+
+            <Modal
+                isOpen={!!duplicateError}
+                onClose={() => setDuplicateError(null)}
+                title="Atención"
+            >
+                <div className="space-y-4">
+                    <div className="bg-amber-50 p-4 rounded-xl text-center border border-amber-200">
+                        <h3 className="text-lg font-bold text-amber-900 mb-1">Registro Duplicado</h3>
+                        <p className="text-base font-medium text-amber-800 mb-1">{duplicateError}</p>
+                        <p className="text-sm text-amber-700">Por favor, utiliza un nombre diferente para evitar confusiones.</p>
+                    </div>
+                    <Button className="w-full" onClick={() => setDuplicateError(null)}>Entendido</Button>
+                </div>
+            </Modal>
         </>
     );
 };
@@ -275,6 +350,8 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
 
     // Cart State: price is string to allow editing "500" -> "" -> "450"
     const [cart, setCart] = useState<{ id: string; name: string; price: string; qty: number }[]>([]);
+    const [typedProductName, setTypedProductName] = useState('');
+    const [isConfirming, setIsConfirming] = useState(false);
     const [method, setMethod] = useState('caja_chica');
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null });
 
@@ -308,8 +385,20 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
     const totalAmount = cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * item.qty), 0);
 
     const handleSubmit = () => {
+        // If user typed something but didn't click add/create, do it now
+        if (typedProductName.trim()) {
+            handleCreateProd(typedProductName);
+            setTypedProductName('');
+            return; // Stop here so user can see it added and set price
+        }
+
         if (cart.length === 0 || totalAmount <= 0) return;
 
+        setIsConfirming(true);
+    };
+
+    const executeSubmit = () => {
+        setIsConfirming(false);
         const prevLedger = { ...accounts, ...getLedgerAccounts() };
 
         // In the Periodic Inventory Model, sales do not track COGS immediately.
@@ -343,12 +432,13 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
 
     const closeAll = () => {
         setFeedback({ isOpen: false, prev: null, curr: null });
+        setIsConfirming(false);
         onClose();
     };
 
     return (
         <>
-            <Modal isOpen={isOpen && !feedback.isOpen} onClose={onClose} title="Registrar Venta">
+            <Modal isOpen={isOpen && !feedback.isOpen && !isConfirming} onClose={onClose} title="Registrar Venta">
                 <div className="space-y-4">
                     {/* Product Search / Add */}
                     <div className="space-y-1">
@@ -358,6 +448,7 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
                             placeholder="Buscar o crear producto..."
                             onSelect={addToCart}
                             onCreate={handleCreateProd}
+                            onInputChange={(val) => setTypedProductName(val)}
                             value="" // Always clear after selection
                         />
                     </div>
@@ -412,12 +503,24 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
                     <Button
                         className="w-full"
                         onClick={handleSubmit}
-                        disabled={cart.length === 0 || totalAmount <= 0}
+                        disabled={(cart.length === 0 && !typedProductName.trim()) || (cart.length > 0 && totalAmount <= 0)}
                     >
                         Cobrar ₡{totalAmount.toLocaleString()}
                     </Button>
                 </div>
             </Modal>
+
+            <ConfirmDialog
+                isOpen={isConfirming}
+                onClose={() => setIsConfirming(false)}
+                onConfirm={executeSubmit}
+                title="Confirmar Venta"
+                data={[
+                    { label: "Items", value: cart.map(i => `${i.name} (x${i.qty})`).join(', ') },
+                    { label: "Monto Total", value: `₡${totalAmount.toLocaleString()}`, highlight: true },
+                    { label: "Método de Pago", value: method === 'caja_chica' ? 'Caja Chica' : 'Banco' }
+                ]}
+            />
 
             {feedback.isOpen && (
                 <AccountingFeedback
@@ -441,6 +544,8 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
         providers, addProvider, getLedgerAccounts
     } = useStore();
     const [form, setForm] = useState({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '', detail: '' });
+    const [tempProvName, setTempProvName] = useState('');
+    const [isConfirming, setIsConfirming] = useState(false);
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null });
 
 
@@ -453,6 +558,25 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
 
     const handleSubmit = () => {
         const amount = parseFloat(form.amount || '0');
+        if (amount <= 0 || !form.typeName) return;
+        setIsConfirming(true);
+    };
+
+    const executeSubmit = () => {
+        setIsConfirming(false);
+        // NEW: Auto-create provider if typed but not selected
+        let finalProvId = form.provId;
+        if (!finalProvId && tempProvName.trim()) {
+            const existing = providers.find(p => p.name.toLowerCase() === tempProvName.toLowerCase());
+            if (existing) {
+                finalProvId = existing.id;
+            } else {
+                finalProvId = crypto.randomUUID();
+                addProvider({ id: finalProvId, name: tempProvName });
+            }
+        }
+
+        const amount = parseFloat(form.amount || '0');
         if (amount <= 0) return;
 
         const prevLedger = { ...accounts, ...getLedgerAccounts() };
@@ -464,7 +588,7 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
             date: new Date().toISOString(),
             amount,
             description: `Gasto (${form.typeName})`,
-            details: { typeName: form.typeName, method: form.method, detail: form.detail.trim(), provName: form.provId ? providers.find(p => p.id === form.provId)?.name : 'N/A' }
+            details: { typeName: form.typeName, method: form.method, detail: form.detail.trim(), provName: finalProvId ? providers.find(p => p.id === finalProvId)?.name || tempProvName : 'N/A' }
         });
 
         const freshState = useStore.getState();
@@ -472,16 +596,18 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
 
         setFeedback({ isOpen: true, prev: prevLedger as any, curr: currLedger as any, description: `Pago de: ${form.typeName}` });
         setForm({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '', detail: '' });
+        setTempProvName('');
     };
 
     const closeAll = () => {
         setFeedback({ isOpen: false, prev: null, curr: null });
+        setIsConfirming(false);
         onClose();
     };
 
     return (
         <>
-            <Modal isOpen={isOpen && !feedback.isOpen} onClose={onClose} title="Registrar Gasto">
+            <Modal isOpen={isOpen && !feedback.isOpen && !isConfirming} onClose={onClose} title="Registrar Gasto">
                 <div className="space-y-4">
                     <div className="space-y-1">
                         <label className="text-xs font-medium ml-1">Tipo de Gasto</label>
@@ -510,7 +636,8 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
                         <Combobox
                             items={providers}
                             placeholder="Buscar..."
-                            onSelect={(i: any) => setForm({ ...form, provId: i.id })}
+                            onSelect={(i: any) => { setForm({ ...form, provId: i.id }); setTempProvName(i.name); }}
+                            onInputChange={(val) => { setTempProvName(val); if (!val) setForm({ ...form, provId: '' }); }}
                             onCreate={handleCreateProv}
                         />
                     </div>
@@ -522,9 +649,23 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
 
                     <Input type="number" placeholder="Monto" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
                     <PaymentMethod value={form.method} onChange={(m: any) => setForm({ ...form, method: m })} />
-                    <Button className="w-full" onClick={handleSubmit}>Registrar Pago</Button>
+                    <Button className="w-full" onClick={handleSubmit}>Gastar</Button>
                 </div>
             </Modal>
+
+            <ConfirmDialog
+                isOpen={isConfirming}
+                onClose={() => setIsConfirming(false)}
+                onConfirm={executeSubmit}
+                title="Confirmar Gasto"
+                data={[
+                    { label: "Tipo de Gasto", value: form.typeName },
+                    { label: "Monto", value: `₡${parseFloat(form.amount).toLocaleString()}`, highlight: true },
+                    { label: "Método", value: form.method === 'caja_chica' ? 'Caja Chica' : 'Banco' },
+                    { label: "Proveedor", value: providers.find(p => p.id === form.provId)?.name || tempProvName || 'N/A' },
+                    { label: "Detalle", value: form.detail || 'Sin detalle' }
+                ]}
+            />
 
             {feedback.isOpen && (
                 <AccountingFeedback
@@ -536,6 +677,8 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
                     description={feedback.description}
                 />
             )}
+
+
         </>
     );
 };
@@ -545,13 +688,14 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
     const {
         inventory, updateInventoryItem,
         addInventoryItem, accounts, addTransaction,
-        consumeInventoryFIFO, getLedgerAccounts,
-        simulateInventoryFIFO
+        consumeInventoryFIFO, getLedgerAccounts
     } = useStore();
 
     // State
     const [ingredients, setIngredients] = useState<{ item: any, qty: string }[]>([]);
     const [output, setOutput] = useState<{ name: string, qty: string, id?: string }>({ name: '', qty: '1' });
+    const [isConfirming, setIsConfirming] = useState(false);
+    const [duplicateError, setDuplicateError] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null });
 
     // Add Ingredient
@@ -570,14 +714,24 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
 
     // Create new Ingredient on the fly
     const handleCreateIngredient = (name: string) => {
+        const trimmedName = name.trim();
+        if (inventory.some(i => i.name.toLowerCase() === trimmedName.toLowerCase())) {
+            setDuplicateError('Ese ingrediente ya existe en el catálogo.');
+            return;
+        }
         const newId = crypto.randomUUID();
-        const newItem = { id: newId, name, stock: 0, cost: 0 };
+        const newItem = { id: newId, name: trimmedName, stock: 0, cost: 0 };
         addInventoryItem(newItem);
         handleAddIngredient(newItem);
     };
 
     // Create Output Product Immediately
     const handleCreateOutput = (name: string) => {
+        const trimmedName = name.trim();
+        if (inventory.some(i => i.name.toLowerCase() === trimmedName.toLowerCase())) {
+            setDuplicateError('Ese producto final ya existe en el catálogo.');
+            return;
+        }
         const newId = crypto.randomUUID();
         // Create in inventory with 0 stock/cost to establish existence
         // The production submission will handle updating its average cost later.
@@ -585,25 +739,18 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
         setOutput({ ...output, name, id: newId });
     };
 
-    // Calculate Total Cost dynamically simulating strict FIFO deduction
-    const totalCost = ingredients.reduce((acc, curr) => {
-        const qty = parseFloat(curr.qty || '0');
-        return acc + simulateInventoryFIFO(curr.item.id, qty);
-    }, 0);
-
     const outputQty = parseFloat(output.qty || '0');
-    const unitCost = outputQty > 0 ? totalCost / outputQty : 0;
+    const totalIngCost = ingredients.reduce((sum: number, i: any) => sum + (i.item.cost * (parseFloat(i.qty) || 0)), 0);
+    const unitCost = outputQty > 0 ? totalIngCost / outputQty : 0;
 
     const handleSubmit = () => {
         if (ingredients.length === 0 || !output.name || outputQty <= 0) return;
+        setIsConfirming(true);
+    };
 
-        let exactTotalCost = 0;
-
-        // 1. Consume Ingredients with FIFO
-        ingredients.forEach(ing => {
-            const qty = parseFloat(ing.qty || '0');
-            exactTotalCost += consumeInventoryFIFO(ing.item.id, qty);
-        });
+    const executeSubmit = () => {
+        setIsConfirming(false);
+        const exactTotalCost = ingredients.reduce((acc, ing) => acc + consumeInventoryFIFO(ing.item.id, parseFloat(ing.qty || '0')), 0);
 
         const prevLedger = { ...accounts, ...getLedgerAccounts() };
 
@@ -672,20 +819,20 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
 
     const closeAll = () => {
         setFeedback({ isOpen: false, prev: null, curr: null });
+        setIsConfirming(false);
         onClose();
     };
 
-
     return (
         <>
-            <Modal isOpen={isOpen && !feedback.isOpen} onClose={onClose} title="Producción (Cocina)" className="max-w-4xl">
+            <Modal isOpen={isOpen && !feedback.isOpen && !isConfirming} onClose={onClose} title="Producción (Cocina)" className="max-w-4xl">
                 <div className="grid md:grid-cols-2 gap-6">
                     {/* Ingredients Column */}
                     <div className="space-y-4 border-r pr-4">
-                        <h4 className="font-bold text-sm text-gray-500 uppercase">1. Insumos (Receta)</h4>
+                        <h4 className="font-bold text-sm text-gray-500 uppercase">1. Inventario (Receta)</h4>
                         <Combobox
                             items={inventory}
-                            placeholder="Agregar insumo..."
+                            placeholder="Agregar artículo..."
                             onSelect={handleAddIngredient}
                             onCreate={handleCreateIngredient}
                             value=""
@@ -718,8 +865,8 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                             ))}
                         </div>
                         <div className="bg-gray-100 p-2 rounded flex justify-between font-bold text-sm">
-                            <span>Costo Total Insumos:</span>
-                            <span>₡{totalCost.toLocaleString()}</span>
+                            <span>Costo Total Inventario:</span>
+                            <span>₡{totalIngCost.toLocaleString()}</span>
                         </div>
                     </div>
 
@@ -732,7 +879,8 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                             <Combobox
                                 items={inventory} // Can select existing to replenish stock
                                 placeholder="Ej: Picadillo por kg"
-                                onSelect={(i: any) => setOutput({ ...output, name: i.name })}
+                                onSelect={(i: any) => setOutput({ ...output, name: i.name, id: i.id })}
+                                onInputChange={(val) => setOutput({ ...output, name: val, id: '' })}
                                 onCreate={handleCreateOutput}
                                 value={output.name}
                             />
@@ -765,13 +913,13 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                                 <div className="flex flex-col items-center leading-tight">
                                     <span>
                                         {!output.name ? 'Falta Nombre Producto' :
-                                            ingredients.length === 0 ? 'Falta Agregar Insumos' :
+                                            ingredients.length === 0 ? 'Falta Agregar Artículos' :
                                                 'Confirmar Producción'}
                                     </span>
                                     <span className="text-[10px] opacity-80 font-normal">
                                         {!output.name ? 'Selecciona o crea el producto final' :
                                             ingredients.length === 0 ? 'Agrega al menos un ingrediente' :
-                                                'Transformar Insumos en Producto'}
+                                                'Transformar Inventario en Producto'}
                                     </span>
                                 </div>
                             </Button>
@@ -779,6 +927,19 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                     </div>
                 </div>
             </Modal>
+
+            <ConfirmDialog
+                isOpen={isConfirming}
+                onClose={() => setIsConfirming(false)}
+                onConfirm={executeSubmit}
+                title="Confirmar Producción"
+                data={[
+                    { label: "Producto Resultante", value: output.name },
+                    { label: "Cantidad", value: output.qty },
+                    { label: "Costo Total Estimado", value: `₡${totalIngCost.toLocaleString()}`, highlight: true },
+                    { label: "Ingredientes", value: ingredients.map(i => `${i.qty}x ${i.item.name}`).join(', ') }
+                ]}
+            />
 
             {feedback.isOpen && (
                 <AccountingFeedback
@@ -790,6 +951,21 @@ export const ProductionModal = ({ isOpen, onClose }: any) => {
                     description={feedback.description}
                 />
             )}
+
+            <Modal
+                isOpen={!!duplicateError}
+                onClose={() => setDuplicateError(null)}
+                title="Atención"
+            >
+                <div className="space-y-4">
+                    <div className="bg-amber-50 p-4 rounded-xl text-center border border-amber-200">
+                        <h3 className="text-lg font-bold text-amber-900 mb-1">Registro Duplicado</h3>
+                        <p className="text-base font-medium text-amber-800 mb-1">{duplicateError}</p>
+                        <p className="text-sm text-amber-700">Por favor, utiliza un nombre diferente para evitar confusiones.</p>
+                    </div>
+                    <Button className="w-full" onClick={() => setDuplicateError(null)}>Entendido</Button>
+                </div>
+            </Modal>
         </>
     );
 };
@@ -908,7 +1084,7 @@ export const InventoryCountModal = ({ isOpen, onClose }: any) => {
             <div className="flex flex-col h-[60vh]">
                 <div className="mb-4">
                     <Input
-                        placeholder="Buscar insumo..."
+                        placeholder="Buscar artículo..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         autoFocus
@@ -918,7 +1094,7 @@ export const InventoryCountModal = ({ isOpen, onClose }: any) => {
                     <table className="w-full text-sm text-left relative">
                         <thead className="text-gray-500 bg-gray-50 sticky top-0 z-10 text-xs uppercase">
                             <tr>
-                                <th className="p-3">Insumo</th>
+                                <th className="p-3">Artículo</th>
                                 <th className="p-3 text-center">Sistema</th>
                                 <th className="p-3 w-24">Físico</th>
                             </tr>
@@ -927,7 +1103,7 @@ export const InventoryCountModal = ({ isOpen, onClose }: any) => {
                             {filtered.length === 0 && (
                                 <tr>
                                     <td colSpan={3} className="p-4 text-center text-gray-400 text-sm">
-                                        No se encontraron insumos.
+                                        No se encontraron artículos.
                                     </td>
                                 </tr>
                             )}
@@ -975,6 +1151,7 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
 
     // State
     const [counts, setCounts] = useState<Record<string, string>>({});
+    const [qCounts, setQCounts] = useState<Record<string, string>>({});
     const [search, setSearch] = useState('');
 
     // Safety check matching Inventory, but treating undefined as empty
@@ -1004,8 +1181,11 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
             if (item) {
                 const sysVal = item.value || 0;
                 const realVal = parseFloat(valStr || '0');
-                if (sysVal !== realVal) {
-                    itemUpdates.push({ ...item, value: realVal });
+                const sysQty = item.quantity || 1;
+                const realQty = parseFloat(qCounts[id] || sysQty.toString());
+
+                if (sysVal !== realVal || sysQty !== realQty) {
+                    itemUpdates.push({ ...item, value: realVal, quantity: realQty });
                 }
             }
         });
@@ -1018,8 +1198,8 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
 
         // Accounting Adjustment
         const newAccounts = { ...accounts };
-        newAccounts.activo_fijo -= diff;
-        newAccounts.gastos += diff;
+        newAccounts.activo_fijo = (newAccounts.activo_fijo || 0) - diff;
+        newAccounts.gastos = (newAccounts.gastos || 0) + diff;
 
         updateAccounts(() => newAccounts);
 
@@ -1053,8 +1233,9 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
                         <thead className="text-gray-500 bg-gray-50 sticky top-0 z-10 text-xs uppercase">
                             <tr>
                                 <th className="p-3">Activo</th>
-                                <th className="p-3 text-center">Valor Sistema</th>
-                                <th className="p-3 w-32">Valor Real</th>
+                                <th className="p-3 text-center">Cant. Sistema</th>
+                                <th className="p-3 text-center">Cant. Real</th>
+                                <th className="p-3 text-center">Valor Total Real</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -1067,12 +1248,39 @@ export const AssetCountModal = ({ isOpen, onClose }: any) => {
                             )}
                             {filtered.map(item => (
                                 <tr key={item.id}>
-                                    <td className="p-3 font-medium">{item.name}</td>
-                                    <td className="p-3 text-center text-gray-500">₡{(item.value || 0).toLocaleString()}</td>
+                                    <td className="p-3 font-medium">
+                                        {item.name}
+                                        <div className="text-[10px] text-gray-400">Sis: ₡{(item.value || 0).toLocaleString()} (x{item.quantity || 1})</div>
+                                    </td>
+                                    <td className="p-3 text-center text-gray-400">{item.quantity || 1}</td>
                                     <td className="p-3">
                                         <input
                                             type="number"
-                                            className={cn("w-28 p-1 border rounded text-right focus:outline-none focus:ring-2",
+                                            className={cn("w-20 p-1 border rounded text-center focus:outline-none focus:ring-2",
+                                                qCounts[item.id] && parseFloat(qCounts[item.id]) !== (item.quantity || 1) ? "border-amber-400 bg-amber-50" : "border-gray-200"
+                                            )}
+                                            placeholder={(item.quantity || 1).toString()}
+                                            value={qCounts[item.id] !== undefined ? qCounts[item.id] : ''}
+                                            onChange={e => {
+                                                const newQty = e.target.value;
+                                                const updates: any = { ...qCounts, [item.id]: newQty };
+                                                setQCounts(updates);
+
+                                                // Proportional value adjustment suggestion if value not yet touched
+                                                if (counts[item.id] === undefined && newQty) {
+                                                    const q = parseFloat(newQty);
+                                                    if (q >= 0 && (item.quantity || 1) > 0) {
+                                                        const newVal = (item.value / (item.quantity || 1)) * q;
+                                                        setCounts(prev => ({ ...prev, [item.id]: newVal.toString() }));
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    </td>
+                                    <td className="p-3">
+                                        <input
+                                            type="number"
+                                            className={cn("w-28 p-1 border rounded text-right focus:outline-none focus:ring-2 ml-auto block",
                                                 counts[item.id] && parseFloat(counts[item.id]) !== (item.value || 0) ? "border-amber-400 bg-amber-50" : "border-gray-200"
                                             )}
                                             placeholder={(item.value || 0).toString()}

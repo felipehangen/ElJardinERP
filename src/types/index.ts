@@ -34,6 +34,7 @@ export interface InventoryItem {
     cost: number; // Weighted average cost (for UI display purposes)
     stock: number; // Total stock (sum of all batches)
     batches?: InventoryBatch[]; // Legacy items might not have this initially
+    hidden?: boolean; // Soft-delete: hidden from operations but kept for accounting integrity
 }
 
 export interface AssetItem {
@@ -48,16 +49,19 @@ export interface Product {
     name: string;
     price: number;
     inventoryItemId?: string; // If linked to an inventory item (e.g. 1 Coca Cola)
+    hidden?: boolean;
 }
 
 export interface Provider {
     id: string;
     name: string;
+    hidden?: boolean;
 }
 
 export interface ExpenseType {
     id: string;
     name: string; // "Luz", "Agua"
+    hidden?: boolean;
 }
 
 export interface Transaction {

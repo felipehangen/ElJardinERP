@@ -24,18 +24,24 @@ interface StoreActions {
 
     // Providers
     addProvider: (item: Provider) => void;
+    updateProvider: (id: string, updates: Partial<Provider>) => void;
     deleteProvider: (id: string) => void;
 
     // Expense Types
     addExpenseType: (item: ExpenseType) => void;
+    updateExpenseType: (id: string, updates: Partial<ExpenseType>) => void;
     deleteExpenseType: (id: string) => void;
 
     // Transactions
     addTransaction: (tx: Transaction) => void;
     updateTransaction: (id: string, updates: Partial<Transaction>) => void;
 
+    // Batches
+    batchUpdateInventory: (updates: InventoryItem[]) => void;
+    batchUpdateAssets: (updates: AssetItem[]) => void;
+
     // Ledger Methods
-    getLedgerAccounts: (startDate?: Date | null, endDate?: Date | null) => Accounts;
+    getLedgerAccounts: (startDate?: Date | null, endDate?: Date | null) => Accounts & { ventas: number, gastos: number, costos: number, otrosIngresos: number, otrosGastos: number };
     consumeInventoryFIFO: (itemId: string, quantityToConsume: number) => number; // Returns COGS
     simulateInventoryFIFO: (itemId: string, qty: number) => number;
     revertTransaction: (txId: string) => void;
@@ -75,9 +81,15 @@ export const useStore = create<AppState & StoreActions>()(
             deleteProduct: (id) => set((state) => ({ products: state.products.filter((p) => p.id !== id) })),
 
             addProvider: (item) => set((state) => ({ providers: [...state.providers, item] })),
+            updateProvider: (id, updates) => set((state) => ({
+                providers: state.providers.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+            })),
             deleteProvider: (id) => set((state) => ({ providers: state.providers.filter((p) => p.id !== id) })),
 
             addExpenseType: (item) => set((state) => ({ expenseTypes: [...state.expenseTypes, item] })),
+            updateExpenseType: (id, updates) => set((state) => ({
+                expenseTypes: state.expenseTypes.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+            })),
             deleteExpenseType: (id) => set((state) => ({ expenseTypes: state.expenseTypes.filter((p) => p.id !== id) })),
 
             addTransaction: (tx) => set((state) => ({ transactions: [tx, ...state.transactions] })),
@@ -101,7 +113,7 @@ export const useStore = create<AppState & StoreActions>()(
 
                 // Recalculate historically exactly how Reports does it, but globally
                 let ventas = validTxs.filter(t => t.type === 'SALE').reduce((acc, t) => acc + t.amount, 0);
-                const extrSales = validTxs
+                const otrosIngresos = validTxs
                     .filter(t => t.type === 'ADJUSTMENT' && !t.voidingTxId && !t.description.toLowerCase().includes('inventario') && !t.description.toLowerCase().includes('físico') && !t.description.toLowerCase().includes('activos'))
                     .reduce((acc, t) => {
                         if (t.description.includes('+')) return acc + t.amount;
@@ -109,7 +121,7 @@ export const useStore = create<AppState & StoreActions>()(
                     }, 0);
 
                 let gastos = validTxs.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
-                const expFromAdj = validTxs
+                const otrosGastos = validTxs
                     .filter(t => t.type === 'ADJUSTMENT' && !t.voidingTxId && !t.description.toLowerCase().includes('inventario') && !t.description.toLowerCase().includes('físico') && !t.description.toLowerCase().includes('activos'))
                     .reduce((acc, t) => {
                         if (t.description.includes('+')) return acc; // Gain
@@ -121,15 +133,15 @@ export const useStore = create<AppState & StoreActions>()(
                     .filter(t => t.type === 'ADJUSTMENT' && !t.voidingTxId && (t.description.toLowerCase().includes('inventario') || t.description.toLowerCase().includes('físico') || t.description.toLowerCase().includes('activos')))
                     .reduce((acc, t) => acc + (t.cogs !== undefined ? t.cogs : t.amount), 0);
 
-                ventas += extrSales;
-                const totalGastos = gastos + expFromAdj;
                 const totalCostos = salesCogs + costsFromAdj;
 
                 return {
                     ...baseAccounts,
                     ventas,
-                    gastos: totalGastos,
-                    costos: totalCostos
+                    gastos,
+                    costos: totalCostos,
+                    otrosIngresos,
+                    otrosGastos
                 };
             },
 
@@ -396,6 +408,24 @@ export const useStore = create<AppState & StoreActions>()(
         {
             name: 'jardin-erp-storage-v4',
             storage: createJSONStorage(() => localStorage),
+            version: 1, // Current structural version of the database
+            migrate: (persistedState: any, version: number) => {
+                let state = { ...persistedState };
+
+                // --- MIGRATION PLAYBOOK ---
+                console.log('Checking state migration from version:', version);
+                // When you alter the state structure in types.ts (e.g. adding a new required field to InventoryItem),
+                // 1. Increment the `version` number above (e.g., to 2).
+                // 2. Add an `if` block below to mutate the old structure into the new one.
+
+                // Example:
+                // if (version === 1) {
+                //     state.inventory = state.inventory.map(item => ({ ...item, newRequiredField: false }));
+                // }
+                // if (version === 2) { ... }
+
+                return state as AppState & StoreActions;
+            }
         }
     )
 );

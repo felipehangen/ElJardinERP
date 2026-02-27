@@ -5,8 +5,10 @@ export const backupManager = {
     },
 
     saveDailyBackup: async (statePayload: any) => {
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const backupName = `jardin-erp-backup-${today}.json`;
+        const now = new Date();
+        const date = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        const time = String(now.getHours()).padStart(2, '0') + '-' + String(now.getMinutes()).padStart(2, '0');
+        const backupName = `jardin-erp-backup-${date}_${time}.json`;
 
         if (backupManager.isElectron()) {
             await backupManager.saveElectronBackup(backupName, statePayload);
