@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { Button, Input, Modal, Combobox, cn } from '../ui';
-import { Trash2, ChevronDown } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { AccountingActions } from '../../lib/accounting';
 import { AccountingFeedback } from '../AccountingFeedback';
 
@@ -50,7 +50,7 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
     } = useStore();
 
     const [tab, setTab] = useState<'inventory' | 'asset'>('inventory');
-    const [form, setForm] = useState({ itemId: '', itemName: '', amount: '', quantity: '1', method: 'caja_chica', provId: '' });
+    const [form, setForm] = useState({ itemId: '', itemName: '', unitPrice: '', quantity: '1', method: 'caja_chica', provId: '' });
     const [tempProvName, setTempProvName] = useState('');
 
     // Smart Create State
@@ -104,9 +104,11 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
     };
 
     const handleSubmit = () => {
-        const amount = parseFloat(form.amount || '0');
+        const qty = parseFloat(form.quantity || '1');
+        const unitPrice = parseFloat(form.unitPrice || '0');
+        const amount = qty * unitPrice;
 
-        if (amount <= 0 || !form.itemName) return;
+        if (amount < 0 || !form.itemName) return;
 
         // Auto-creation check
         if (tab === 'inventory' && !form.itemId) {
@@ -132,10 +134,11 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
             }
         }
 
-        const amount = parseFloat(form.amount || '0');
         const quantity = parseFloat(form.quantity || '1');
+        const unitPrice = parseFloat(form.unitPrice || '0');
+        const amount = quantity * unitPrice;
 
-        if (amount <= 0 && tab === 'inventory') return; // Extra safety
+        if (amount < 0 && tab === 'inventory') return; // Extra safety
 
         const prevLedger = { ...accounts, ...getLedgerAccounts() }; // Capture snapshot
         let newAccounts = accounts;
@@ -207,7 +210,7 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
 
         // Trigger Feedback instead of closing immediately
         setFeedback({ isOpen: true, prev: prevLedger as any, curr: currLedger as any, description: `Compraste: ${form.itemName} (x${quantity})` });
-        setForm({ itemId: '', itemName: '', amount: '', quantity: '1', method: 'caja_chica', provId: '' });
+        setForm({ itemId: '', itemName: '', unitPrice: '', quantity: '1', method: 'caja_chica', provId: '' });
         setTempProvName('');
     };
 
@@ -280,19 +283,32 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                             />
                         </div>
 
-                        <div className="flex gap-4">
-                            <div className="w-24">
+                        <div className="flex gap-3">
+                            <div className="w-24 shrink-0">
                                 <label className="text-xs font-medium ml-1">Cantidad</label>
                                 <Input type="number" placeholder="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} />
                             </div>
                             <div className="flex-1">
-                                <label className="text-xs font-medium ml-1">Monto Total</label>
-                                <Input type="number" placeholder="0.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
+                                <label className="text-xs font-medium ml-1">Precio Unitario</label>
+                                <Input type="number" placeholder="0" value={form.unitPrice} onChange={e => setForm({ ...form, unitPrice: e.target.value })} />
                             </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Precio Total</span>
+                            <span className="text-lg font-black text-jardin-primary">
+                                ₡{Math.round((parseFloat(form.quantity || '1') * parseFloat(form.unitPrice || '0'))).toLocaleString()}
+                            </span>
                         </div>
 
                         <PaymentMethod value={form.method} onChange={(m: any) => setForm({ ...form, method: m })} />
-                        <Button className="w-full" onClick={handleSubmit}>Registrar Salida de Dinero</Button>
+
+                        {(parseFloat(form.quantity || '1') * parseFloat(form.unitPrice || '0')) === 0 && tab === 'asset' && (
+                            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-amber-800 text-xs flex gap-2 items-center">
+                                <span>⚠️</span>
+                                <p><strong>Advertencia:</strong> Estás registrando un activo con valor ₡0. Esto sumará cantidad pero no afectará contablemente tu Activo Fijo.</p>
+                            </div>
+                        )}
+                        <Button className="w-full" onClick={handleSubmit}>Registrar {tab === 'asset' ? 'Activo' : 'Salida de Dinero'}</Button>
                     </div>
                 )}
             </Modal>
@@ -305,7 +321,8 @@ export const PurchaseModal = ({ isOpen, onClose }: any) => {
                 data={[
                     { label: "Artículo", value: form.itemName },
                     { label: "Cantidad", value: form.quantity },
-                    { label: "Monto Total", value: `₡${parseFloat(form.amount || '0').toLocaleString()}`, highlight: true },
+                    { label: "Precio Unitario", value: `₡${Math.round(parseFloat(form.unitPrice || '0')).toLocaleString()}` },
+                    { label: "Precio Total", value: `₡${Math.round(parseFloat(form.quantity || '1') * parseFloat(form.unitPrice || '0')).toLocaleString()}`, highlight: true },
                     { label: "Método", value: form.method === 'caja_chica' ? 'Caja Chica' : 'Banco' },
                     { label: "Proveedor", value: providers.find(p => p.id === form.provId)?.name || tempProvName || 'No especificado' }
                 ]}
@@ -360,6 +377,7 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
         const newProd = { id, name, price: 0 };
         addProduct(newProd);
         addToCart(newProd); // Add immediately
+        setTypedProductName(''); // Prevent duplicate on next "Cobrar" click
     };
 
     const addToCart = (product: any) => {
@@ -392,7 +410,7 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
             return; // Stop here so user can see it added and set price
         }
 
-        if (cart.length === 0 || totalAmount <= 0) return;
+        if (cart.length === 0 || totalAmount < 0) return;
 
         setIsConfirming(true);
     };
@@ -446,7 +464,7 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
                         <Combobox
                             items={products}
                             placeholder="Buscar o crear producto..."
-                            onSelect={addToCart}
+                            onSelect={(p: any) => { addToCart(p); setTypedProductName(''); }}
                             onCreate={handleCreateProd}
                             onInputChange={(val) => setTypedProductName(val)}
                             value="" // Always clear after selection
@@ -500,10 +518,17 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
 
                     <PaymentMethod value={method} onChange={setMethod} />
 
+                    {totalAmount === 0 && cart.length > 0 && (
+                        <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-amber-800 text-xs flex gap-2 items-center">
+                            <span>⚠️</span>
+                            <p><strong>Advertencia:</strong> Estás registrando una venta por ₡0 (Cortesía o regalía). Esto restará inventario al cerrar el mes pero no sumará ingresos.</p>
+                        </div>
+                    )}
+
                     <Button
                         className="w-full"
                         onClick={handleSubmit}
-                        disabled={(cart.length === 0 && !typedProductName.trim()) || (cart.length > 0 && totalAmount <= 0)}
+                        disabled={(cart.length === 0 && !typedProductName.trim()) || (cart.length > 0 && totalAmount < 0)}
                     >
                         Cobrar ₡{totalAmount.toLocaleString()}
                     </Button>
@@ -540,7 +565,7 @@ export const SaleModal = ({ isOpen, onClose }: any) => {
 export const ExpenseModal = ({ isOpen, onClose }: any) => {
     const {
         accounts, updateAccounts, addTransaction,
-        expenseTypes,
+        expenseTypes, addExpenseType,
         providers, addProvider, getLedgerAccounts
     } = useStore();
     const [form, setForm] = useState({ typeId: '', typeName: '', amount: '', method: 'caja_chica', provId: '', detail: '' });
@@ -548,7 +573,11 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
     const [isConfirming, setIsConfirming] = useState(false);
     const [feedback, setFeedback] = useState<{ isOpen: boolean, prev: any, curr: any, description?: string }>({ isOpen: false, prev: null, curr: null });
 
-
+    const handleCreateExpType = (name: string) => {
+        const id = crypto.randomUUID();
+        addExpenseType({ id, name });
+        setForm(prev => ({ ...prev, typeId: id, typeName: name }));
+    };
 
     const handleCreateProv = (name: string) => {
         const id = crypto.randomUUID();
@@ -611,24 +640,14 @@ export const ExpenseModal = ({ isOpen, onClose }: any) => {
                 <div className="space-y-4">
                     <div className="space-y-1">
                         <label className="text-xs font-medium ml-1">Tipo de Gasto</label>
-                        <div className="relative">
-                            <select
-                                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl appearance-none focus:ring-2 focus:ring-jardin-primary focus:border-jardin-primary transition-all outline-none"
-                                value={form.typeName}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setForm({ ...form, typeId: val, typeName: val });
-                                }}
-                            >
-                                <option value="" disabled>Seleccione un tipo...</option>
-                                {expenseTypes.map((t: any) => (
-                                    <option key={t.id} value={t.name}>{t.name}</option>
-                                ))}
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
-                                <ChevronDown size={16} />
-                            </div>
-                        </div>
+                        <Combobox
+                            items={expenseTypes}
+                            placeholder="Buscar o crear tipo de gasto..."
+                            value={form.typeName}
+                            onSelect={(t: any) => setForm({ ...form, typeId: t.id, typeName: t.name })}
+                            onInputChange={(val) => { setForm({ ...form, typeId: '', typeName: val }); }}
+                            onCreate={handleCreateExpType}
+                        />
                     </div>
 
                     <div className="space-y-1">

@@ -4,6 +4,9 @@ import { Card, cn, Input, Modal } from './ui';
 import { FileText, List, Box, Monitor, Wallet, X, Download } from 'lucide-react';
 import type { Transaction } from '../types';
 
+// Format currency without cents
+const fmt = (n: number) => Math.round(n).toLocaleString();
+
 // Define helper to get YTD start date
 const getYTDStartDate = () => {
     const today = new Date();
@@ -198,24 +201,24 @@ export const Reports = () => {
                         </div>
                         <div className="space-y-3 text-sm">
                             <Row label="(+) Ventas Totales" value={financialData.ventas} bold />
-                            <Row label="(-) Costo de Ventas" value={financialData.costos} color="text-red-500" />
+                            <Row label="(-) Costo de Ventas" value={-financialData.costos} color="text-red-500" />
                             <div className="border-t border-dashed my-2 border-emerald-500/30" />
                             <Row label="= Utilidad Bruta" value={financialData.ventas - financialData.costos} bold />
-                            <Row label="(-) Gastos Operativos" value={financialData.gastos} color="text-red-500" />
+                            <Row label="(-) Gastos Operativos" value={-financialData.gastos} color="text-red-500" />
 
                             {(financialData.otrosIngresos > 0 || financialData.otrosGastos > 0) ? (
                                 <>
                                     <div className="border-t border-dashed my-2 border-emerald-500/30" />
                                     <Row label="= Utilidad Operativa" value={financialData.utilidadOperativa} bold />
                                     {financialData.otrosIngresos > 0 && <Row label="(+) Otros Ingresos (Faltantes/Sobrantes)" value={financialData.otrosIngresos} color="text-green-600" />}
-                                    {financialData.otrosGastos > 0 && <Row label="(-) Otros Gastos (Ajustes Negativos)" value={financialData.otrosGastos} color="text-red-500" />}
+                                    {financialData.otrosGastos > 0 && <Row label="(-) Otros Gastos (Ajustes Negativos)" value={-financialData.otrosGastos} color="text-red-500" />}
                                 </>
                             ) : null}
 
                             <div className="border-t-2 border-emerald-500 my-2 pt-2" />
                             <div className="flex justify-between items-end font-black text-xl text-jardin-primary bg-emerald-50 p-3 rounded-lg border border-emerald-200 shadow-sm">
                                 <span className="text-sm font-bold uppercase text-emerald-800">Utilidad Neta</span>
-                                <span>₡{financialData.utilidadNeta.toLocaleString()}</span>
+                                <span>₡{fmt(financialData.utilidadNeta)}</span>
                             </div>
                         </div>
                         {(finStartDate || finEndDate) && (
@@ -240,7 +243,7 @@ export const Reports = () => {
                                 <Row label="Activo Fijo" value={accounts.activo_fijo} />
                                 <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-black text-gray-800">
                                     <span>Total Activos</span>
-                                    <span>₡{totalActivos.toLocaleString()}</span>
+                                    <span>₡{fmt(totalActivos)}</span>
                                 </div>
                             </div>
 
@@ -259,14 +262,14 @@ export const Reports = () => {
                                 <Row label="Utilidad Acumulada" value={utilidadNeta} color={utilidadNeta >= 0 ? 'text-green-600' : 'text-red-500'} />
                                 <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-black text-gray-800">
                                     <span>Total Patrimonio</span>
-                                    <span>₡{totalPatrimonio.toLocaleString()}</span>
+                                    <span>₡{fmt(totalPatrimonio)}</span>
                                 </div>
                             </div>
 
                             <div className="bg-emerald-100 p-3 rounded-xl shadow-sm border border-emerald-200">
                                 <div className="flex justify-between font-black text-emerald-900 text-base">
                                     <span>Pasivo + Patrimonio</span>
-                                    <span>₡{(0 + totalPatrimonio).toLocaleString()}</span>
+                                    <span>₡{fmt(0 + totalPatrimonio)}</span>
                                 </div>
                             </div>
                         </div>
@@ -309,8 +312,8 @@ export const Reports = () => {
                                             {i.stock === 0 && <span className="ml-2 text-[10px] font-bold uppercase tracking-tighter opacity-70">(Sin Stock)</span>}
                                         </td>
                                         <td className="p-3 text-center">{i.stock}</td>
-                                        <td className="p-3 text-right">₡{i.cost.toLocaleString()}</td>
-                                        <td className="p-3 text-right font-bold">₡{(i.stock * i.cost).toLocaleString()}</td>
+                                        <td className="p-3 text-right">₡{fmt(i.cost)}</td>
+                                        <td className="p-3 text-right font-bold">₡{fmt(i.stock * i.cost)}</td>
                                     </tr>
                                 ))}
                                 {filteredInventory.length === 0 && (
@@ -321,7 +324,7 @@ export const Reports = () => {
                                 <tr>
                                     <td colSpan={3} className="p-3 text-right">Valor Total Inventario:</td>
                                     <td className="p-3 text-right text-jardin-primary">
-                                        ₡{filteredInventory.reduce((acc, i) => acc + (i.stock * i.cost), 0).toLocaleString()}
+                                        ₡{fmt(filteredInventory.reduce((acc, i) => acc + (i.stock * i.cost), 0))}
                                     </td>
                                 </tr>
                             </tfoot>
@@ -358,7 +361,7 @@ export const Reports = () => {
                                     <tr key={a.id} className="hover:bg-gray-50">
                                         <td className="p-3 font-medium">{a.name}</td>
                                         <td className="p-3 text-center">{a.quantity}</td>
-                                        <td className="p-3 text-right font-bold">₡{a.value.toLocaleString()}</td>
+                                        <td className="p-3 text-right font-bold">₡{fmt(a.value)}</td>
                                     </tr>
                                 ))}
                                 {filteredAssets.length === 0 && (
@@ -369,7 +372,7 @@ export const Reports = () => {
                                 <tr>
                                     <td colSpan={2} className="p-3 text-right">Total Activos Fijos:</td>
                                     <td className="p-3 text-right text-jardin-primary">
-                                        ₡{filteredAssets.reduce((acc, a) => acc + a.value, 0).toLocaleString()}
+                                        ₡{fmt(filteredAssets.reduce((acc, a) => acc + a.value, 0))}
                                     </td>
                                 </tr>
                             </tfoot>
@@ -386,7 +389,7 @@ export const Reports = () => {
                             <div className="p-3 bg-emerald-100 rounded-full text-emerald-600"><Wallet /></div>
                             <div>
                                 <div className="text-sm text-gray-500 uppercase font-bold">Caja Chica</div>
-                                <div className="text-2xl font-black text-gray-800">₡{accounts.caja_chica.toLocaleString()}</div>
+                                <div className="text-2xl font-black text-gray-800">₡{fmt(accounts.caja_chica)}</div>
                             </div>
                         </div>
                         <div className="text-xs text-gray-400">Efectivo disponible en caja</div>
@@ -397,7 +400,7 @@ export const Reports = () => {
                             <div className="p-3 bg-blue-100 rounded-full text-blue-600"><Wallet /></div>
                             <div>
                                 <div className="text-sm text-gray-500 uppercase font-bold">Bancos</div>
-                                <div className="text-2xl font-black text-gray-800">₡{accounts.banco.toLocaleString()}</div>
+                                <div className="text-2xl font-black text-gray-800">₡{fmt(accounts.banco)}</div>
                             </div>
                         </div>
                         <div className="text-xs text-gray-400">Fondos en cuentas bancarias</div>
@@ -406,7 +409,7 @@ export const Reports = () => {
                     <Card className="md:col-span-2">
                         <h3 className="font-bold text-gray-500 uppercase text-xs mb-4">Total Disponibilidad (Liquidez)</h3>
                         <div className="text-4xl font-black text-jardin-primary">
-                            ₡{(accounts.caja_chica + accounts.banco).toLocaleString()}
+                            ₡{fmt(accounts.caja_chica + accounts.banco)}
                         </div>
                     </Card>
                 </div>
@@ -485,7 +488,7 @@ export const Reports = () => {
                                             {t.description}
                                         </td>
                                         <td className="p-3 text-right font-mono font-bold text-gray-800">
-                                            ₡{t.amount.toLocaleString()}
+                                            ₡{fmt(t.amount)}
                                         </td>
                                     </tr>
                                 ))}
@@ -544,7 +547,7 @@ export const Reports = () => {
                                 "text-3xl font-black text-jardin-primary",
                                 selectedTx.status === 'VOIDED' && "line-through opacity-50 text-gray-500"
                             )}>
-                                ₡{selectedTx.amount.toLocaleString()}
+                                ₡{fmt(selectedTx.amount)}
                             </span>
                         </div>
 
@@ -593,7 +596,7 @@ export const Reports = () => {
 const Row = ({ label, value, color, bold }: any) => (
     <div className={cn("flex justify-between items-center py-1", bold && "font-bold text-gray-900", color)}>
         <span className={cn(bold ? "text-base" : "text-gray-600")}>{label}</span>
-        <span className="font-mono">{value < 0 ? '-' : ''}₡{Math.abs(value).toLocaleString()}</span>
+        <span className="font-mono">{value < 0 ? '-' : ''}₡{fmt(Math.abs(value))}</span>
     </div>
 );
 
@@ -619,19 +622,19 @@ const renderTransactionDetails = (tx: Transaction) => {
                     {tx.details.cart?.map((item: any, i: number) => (
                         <div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-gray-100">
                             <span className="text-gray-600">{item.qty}x {item.name}</span>
-                            <span className="font-medium">₡{(parseFloat(item.price || '0') * item.qty).toLocaleString()}</span>
+                            <span className="font-medium">₡{fmt(parseFloat(item.price || '0') * item.qty)}</span>
                         </div>
                     ))}
                     {tx.cogs !== undefined && (
                         <div className="pt-2 flex justify-between text-xs text-gray-500">
                             <span>Costo de Venta (Inventario)</span>
-                            <span>₡{tx.cogs.toLocaleString()}</span>
+                            <span>₡{fmt(tx.cogs)}</span>
                         </div>
                     )}
                     {tx.cogs !== undefined && (
                         <div className="flex justify-between text-xs font-bold text-emerald-600 mt-1">
                             <span>Margen Bruto</span>
-                            <span>₡{(tx.amount - tx.cogs).toLocaleString()}</span>
+                            <span>₡{fmt(tx.amount - tx.cogs)}</span>
                         </div>
                     )}
                     {tx.details.method && (
@@ -703,7 +706,7 @@ const renderTransactionDetails = (tx: Transaction) => {
                                 {tx.details.ingredients.map((ing: any, i: number) => (
                                     <div key={i} className="flex justify-between text-xs py-1 text-gray-600 border-b border-gray-50 last:border-0">
                                         <span>{ing.qty}x {ing.item.name}</span>
-                                        <span className="font-mono">₡{(ing.qty * ing.item.cost).toFixed(2)}</span>
+                                        <span className="font-mono">₡{fmt(ing.qty * ing.item.cost)}</span>
                                     </div>
                                 ))}
                             </div>

@@ -4,30 +4,28 @@ export const backupManager = {
         return typeof window !== 'undefined' && (window as any).process && (window as any).process.type;
     },
 
-    saveDailyBackup: async (statePayload: any) => {
+    saveDailyBackup: async (statePayload: any): Promise<boolean> => {
         const now = new Date();
         const date = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
         const time = String(now.getHours()).padStart(2, '0') + '-' + String(now.getMinutes()).padStart(2, '0');
         const backupName = `jardin-erp-backup-${date}_${time}.json`;
 
         if (backupManager.isElectron()) {
-            await backupManager.saveElectronBackup(backupName, statePayload);
+            return backupManager.saveElectronBackup(backupName, statePayload);
         } else {
-            await backupManager.saveIndexedDBBackup(backupName, statePayload);
+            return backupManager.saveIndexedDBBackup(backupName, statePayload);
         }
     },
 
     // ---------------------------------------------------------
     // ELECTRON (Node.js) FILE SYSTEM BACKUP
     // ---------------------------------------------------------
-    saveElectronBackup: async (filename: string, payload: any) => {
+    saveElectronBackup: async (filename: string, payload: any): Promise<boolean> => {
         try {
-            // Because we have nodeIntegration: true and contextIsolation: false, we can dynamically require
             const fs = (window as any).require('fs');
             const path = (window as any).require('path');
             const { app } = (window as any).require('@electron/remote') || (window as any).require('electron');
 
-            // Find the user's Application Support folder (or fallback to a local 'backups' dir)
             const userDataPath = app ? app.getPath('userData') : (window as any).process.cwd();
             const backupDir = path.join(userDataPath, 'backups');
 
@@ -38,7 +36,7 @@ export const backupManager = {
             const filepath = path.join(backupDir, filename);
 
             // Skip if today's backup already exists
-            if (fs.existsSync(filepath)) return;
+            if (fs.existsSync(filepath)) return false;
 
             fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), 'utf-8');
 
@@ -50,16 +48,17 @@ export const backupManager = {
                     path: path.join(backupDir, f),
                     time: fs.statSync(path.join(backupDir, f)).mtime.getTime()
                 }))
-                .sort((a: any, b: any) => b.time - a.time); // Newest first
+                .sort((a: any, b: any) => b.time - a.time);
 
-            if (files.length > 10) {
-                // Delete everything older than the 10th newest file
-                for (let i = 10; i < files.length; i++) {
+            if (files.length > 15) {
+                for (let i = 15; i < files.length; i++) {
                     fs.unlinkSync(files[i].path);
                 }
             }
+            return true;
         } catch (error) {
             console.error("Electron File Backup Failed:", error);
+            return false;
         }
     },
 
@@ -125,7 +124,7 @@ export const backupManager = {
         });
     },
 
-    saveIndexedDBBackup: async (filename: string, payload: any) => {
+    saveIndexedDBBackup: async (filename: string, payload: any): Promise<boolean> => {
         const db = await backupManager.initDB();
 
         // Check if exists
@@ -136,7 +135,7 @@ export const backupManager = {
             req.onsuccess = () => resolve(req.result !== undefined);
         });
 
-        if (exists) return; // Already backed up today
+        if (exists) return false; // Already backed up today
 
         // Save
         const dateStr = filename.replace('jardin-erp-backup-', '').replace('.json', '');
@@ -157,14 +156,16 @@ export const backupManager = {
                 const records = req.result;
                 records.sort((a, b) => b.timestamp - a.timestamp); // Newest first
 
-                if (records.length > 10) {
-                    for (let i = 10; i < records.length; i++) {
+                if (records.length > 15) {
+                    for (let i = 15; i < records.length; i++) {
                         store.delete(records[i].id);
                     }
                 }
                 resolve(true);
             };
         });
+
+        return true;
     },
 
     getIndexedDBBackups: async () => {
