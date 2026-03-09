@@ -408,21 +408,27 @@ export const useStore = create<AppState & StoreActions>()(
         {
             name: 'jardin-erp-storage-v4',
             storage: createJSONStorage(() => localStorage),
-            version: 1, // Current structural version of the database
+            version: 2, // v2 = app v1.0.1: added assets[], InventoryBatch FIFO, hidden soft-delete, Transaction cogs/status/voidingTxId
             migrate: (persistedState: any, version: number) => {
                 let state = { ...persistedState };
 
                 // --- MIGRATION PLAYBOOK ---
                 console.log('Checking state migration from version:', version);
                 // When you alter the state structure in types.ts (e.g. adding a new required field to InventoryItem),
-                // 1. Increment the `version` number above (e.g., to 2).
+                // 1. Increment the `version` number above (e.g., to 3).
                 // 2. Add an `if` block below to mutate the old structure into the new one.
 
-                // Example:
-                // if (version === 1) {
-                //     state.inventory = state.inventory.map(item => ({ ...item, newRequiredField: false }));
+                // v1 → v2 (app v1.0.0 → v1.0.1): assets array added as root field
+                if (version < 2) {
+                    if (!state.assets) state.assets = [];
+                    // All other additions (hidden, batches, cogs, status, voidingTxId) are optional
+                    // fields on existing objects — they default to undefined safely, no transform needed.
+                }
+
+                // Example for future:
+                // if (version < 3) {
+                //     state.inventory = state.inventory.map((item: any) => ({ ...item, newRequiredField: false }));
                 // }
-                // if (version === 2) { ... }
 
                 return state as AppState & StoreActions;
             }

@@ -34,17 +34,19 @@ export const Onboarding = () => {
     };
 
     // Step 2: Assets
-    const [assetForm, setAssetForm] = useState({ name: '', value: '', quantity: '1' });
+    const [assetForm, setAssetForm] = useState({ name: '', unitPrice: '', quantity: '1' });
     const addAsset = () => {
-        if (!assetForm.name || !assetForm.value) return;
+        if (!assetForm.name || !assetForm.unitPrice) return;
+        const qty = parseFloat(assetForm.quantity || '1');
+        const unitPrice = parseFloat(assetForm.unitPrice || '0');
         const newItem: AssetItem = {
             id: crypto.randomUUID(),
             name: assetForm.name,
-            value: parseFloat(assetForm.value || '0'),
-            quantity: parseFloat(assetForm.quantity || '1')
+            value: unitPrice * qty,
+            quantity: qty
         };
         setTempAssets([...tempAssets, newItem]);
-        setAssetForm({ name: '', value: '', quantity: '1' });
+        setAssetForm({ name: '', unitPrice: '', quantity: '1' });
     };
 
     // Finalize
@@ -78,11 +80,17 @@ export const Onboarding = () => {
                         <h2 className="text-xl font-bold mb-2">1. Inventario Inicial</h2>
                         <p className="text-sm text-gray-500 mb-6">Agregue sus artículos de inventario uno por uno. Especifique unidad en el nombre (ej: Leche 1L).</p>
 
-                        <div className="flex gap-2 mb-4">
+                        <div className="flex gap-2 mb-2">
                             <Input placeholder="Nombre (ej: Harina 1kg)" value={invForm.name} onChange={e => setInvForm({ ...invForm, name: e.target.value })} />
                             <Input type="number" placeholder="Costo Unit." className="w-32" value={invForm.cost} onChange={e => setInvForm({ ...invForm, cost: e.target.value })} />
                             <Input type="number" placeholder="Cant." className="w-24" value={invForm.stock} onChange={e => setInvForm({ ...invForm, stock: e.target.value })} />
                             <Button onClick={addInv}><Plus size={20} /></Button>
+                        </div>
+                        <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 mb-4">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Valor Total</span>
+                            <span className="text-base font-black text-jardin-primary">
+                                ₡{Math.round(parseFloat(invForm.stock || '0') * parseFloat(invForm.cost || '0')).toLocaleString()}
+                            </span>
                         </div>
 
                         <div className="bg-gray-50 rounded-xl p-4 min-h-[150px] max-h-[300px] overflow-y-auto space-y-2 mb-6">
@@ -106,11 +114,17 @@ export const Onboarding = () => {
                         <h2 className="text-xl font-bold mb-2">2. Activos Fijos</h2>
                         <p className="text-sm text-gray-500 mb-6">Equipos, maquinaria o mobiliario importante.</p>
 
-                        <div className="flex gap-2 mb-4">
+                        <div className="flex gap-2 mb-2">
                             <Input placeholder="Nombre (ej: Crepera Industrial)" value={assetForm.name} onChange={e => setAssetForm({ ...assetForm, name: e.target.value })} />
-                            <Input type="number" placeholder="Valor Total" className="w-32" value={assetForm.value} onChange={e => setAssetForm({ ...assetForm, value: e.target.value })} />
+                            <Input type="number" placeholder="Precio Unit." className="w-32" value={assetForm.unitPrice} onChange={e => setAssetForm({ ...assetForm, unitPrice: e.target.value })} />
                             <Input type="number" placeholder="Cant." className="w-20" value={assetForm.quantity} onChange={e => setAssetForm({ ...assetForm, quantity: e.target.value })} />
                             <Button onClick={addAsset}><Plus size={20} /></Button>
+                        </div>
+                        <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 mb-4">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Precio Total</span>
+                            <span className="text-base font-black text-jardin-primary">
+                                ₡{Math.round(parseFloat(assetForm.quantity || '1') * parseFloat(assetForm.unitPrice || '0')).toLocaleString()}
+                            </span>
                         </div>
 
                         <div className="bg-gray-50 rounded-xl p-4 min-h-[150px] max-h-[300px] overflow-y-auto space-y-2 mb-6">

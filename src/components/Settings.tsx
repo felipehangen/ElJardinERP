@@ -161,7 +161,7 @@ export const Settings = () => {
                         </Button>
                     )}
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 max-h-[220px] overflow-y-auto pr-1">
                     {autoBackups.length === 0 ? (
                         <p className="text-gray-500 text-xs bg-gray-50 p-3 rounded-md">Aún no hay respaldos automáticos. El sistema tomará una foto invisible de la base de datos una vez al día.</p>
                     ) : (

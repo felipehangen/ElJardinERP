@@ -14,6 +14,7 @@ export default function App() {
   const initialized = useStore((state) => state.initialized);
   const [tab, setTab] = useState('ops'); // ops, cats, reps, sets
   const [modal, setModal] = useState<string | null>(null);
+  const [backupToast, setBackupToast] = useState(false);
 
   useEffect(() => {
     if (!initialized) return;
@@ -26,7 +27,11 @@ export default function App() {
           documentacion_contable: getAccountingDocumentation()
         };
         const cleanPayload = JSON.parse(JSON.stringify(exportPayload));
-        await backupManager.saveDailyBackup(cleanPayload);
+        const saved = await backupManager.saveDailyBackup(cleanPayload);
+        if (saved) {
+          setBackupToast(true);
+          setTimeout(() => setBackupToast(false), 4000);
+        }
       } catch (err) {
         console.error("Error auto-guardando respaldo:", err);
       }
@@ -60,6 +65,14 @@ export default function App() {
       {modal === 'inventory_count' && <InventoryCountModal isOpen={true} onClose={() => setModal(null)} />}
       {modal === 'asset_count' && <AssetCountModal isOpen={true} onClose={() => setModal(null)} />}
       {modal === 'cash_adjustment' && <CashAdjustmentModal isOpen={true} onClose={() => setModal(null)} />}
+
+      {/* Daily Backup Toast */}
+      {backupToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold animate-in slide-in-from-bottom-4 duration-300">
+          <span className="text-lg">💾</span>
+          Respaldo diario guardado ✓
+        </div>
+      )}
     </Layout>
   );
 }

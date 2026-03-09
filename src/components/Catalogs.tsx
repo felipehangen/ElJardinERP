@@ -177,9 +177,9 @@ export const Catalogs = () => {
                                     <div className="p-6 text-center text-gray-400 text-sm italic">Sin productos registrados</div>
                                 )}
                                 {visibleProducts.map(i => (
-                                    <div key={i.id} className="p-4 flex justify-between items-center text-sm">
-                                        <input value={i.name} onChange={e => updateProduct(i.id, { name: e.target.value })} className="font-medium bg-transparent focus:underline outline-none" />
-                                        <div className="flex items-center gap-2">
+                                    <div key={i.id} className="p-4 flex flex-wrap justify-between items-start gap-y-1 text-sm">
+                                        <input value={i.name} onChange={e => updateProduct(i.id, { name: e.target.value })} className="font-medium bg-transparent focus:underline outline-none min-w-0 flex-1 break-words" />
+                                        <div className="flex items-center gap-2 shrink-0">
                                             <span className="text-xs text-gray-400">₡</span>
                                             <input
                                                 type="number"
